@@ -1,0 +1,6 @@
+{
+  "name": "연희노인복지관 휴가관리 시스템",
+  "description": "연희노인복지관 전자결재 휴가관리 시스템 (직원 휴가 신청 및 결재 관리)",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
