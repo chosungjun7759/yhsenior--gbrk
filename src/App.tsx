@@ -11,6 +11,7 @@ import StampUploader from "./components/StampUploader";
 import LeaveResetManager from "./components/LeaveResetManager";
 import LeaveEditModal from "./components/LeaveEditModal";
 import StaffManager from "./components/StaffManager";
+import { LoginPasswordModal, ChangePasswordModal } from "./components/PasswordModal";
 import {
   Heart, Plus, CheckSquare, Users,
   RefreshCw, BadgeCheck, ArrowLeft
@@ -30,6 +31,9 @@ export default function App() {
   const [editTarget, setEditTarget] = useState<LeaveRequest | null>(null);
   const [showStaffManager, setShowStaffManager] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);
+  const [loginTarget, setLoginTarget] = useState<User | null>(null);
+  const [loginError, setLoginError] = useState("");
+  const [showChangePw, setShowChangePw] = useState(false);
   const [myRemainingLeave, setMyRemainingLeave] = useState(0);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
@@ -77,6 +81,29 @@ export default function App() {
   if (!currentUser) {
     return (
       <div className="min-h-screen bg-slate-100 flex flex-col items-center justify-center p-6">
+        {/* 비밀번호 입력 모달 — 로그인 화면 위에 표시 */}
+        {loginTarget && (
+          <LoginPasswordModal
+            user={loginTarget}
+            error={loginError}
+            onConfirm={(pw) => {
+              const correct = loginTarget.password ?? "0000";
+              if (pw !== correct) {
+                setLoginError("비밀번호가 틀립니다. 다시 입력해주세요.");
+                return;
+              }
+              setCurrentUser(loginTarget);
+              setLoginTarget(null);
+              setLoginError("");
+              setIsApplyingFormOpen(false);
+              if (loginTarget.role === Role.DIRECTOR || loginTarget.role === Role.MANAGER) {
+                setAdminTab("APPROVAL");
+              }
+              showToast(`${loginTarget.name}님으로 로그인했습니다.`, "info");
+            }}
+            onCancel={() => { setLoginTarget(null); setLoginError(""); }}
+          />
+        )}
         <div className="max-w-md w-full bg-white rounded-2xl border border-slate-200 shadow-xl p-8 space-y-6">
           <div className="text-center space-y-2">
             <div className="bg-blue-600 text-white rounded-2xl p-3.5 inline-block shadow-md">
@@ -101,12 +128,8 @@ export default function App() {
                 <button
                   key={user.id}
                   onClick={() => {
-                    setCurrentUser(user);
-                    setIsApplyingFormOpen(false);
-                    if (user.role === Role.DIRECTOR || user.role === Role.MANAGER) {
-                      setAdminTab("APPROVAL");
-                    }
-                    showToast(`${user.name}님으로 로그인했습니다.`, "info");
+                    setLoginTarget(user);
+                    setLoginError("");
                   }}
                   className="w-full text-left p-3.5 border border-slate-150 hover:border-blue-400 bg-slate-50 hover:bg-blue-50/30 rounded-xl flex items-center justify-between transition-all group cursor-pointer"
                 >
@@ -212,7 +235,22 @@ export default function App() {
         onLogout={() => { setCurrentUser(null); showToast("로그아웃 되었습니다.", "info"); }}
         onStampOpen={() => setShowStampUploader(true)}
         onStaffManage={() => setShowStaffManager(true)}
+        onChangePassword={() => setShowChangePw(true)}
       />
+
+      {/* 비밀번호 변경 모달 */}
+      {showChangePw && currentUser && (
+        <ChangePasswordModal
+          user={currentUser}
+          onClose={() => setShowChangePw(false)}
+          onSave={async (newPw) => {
+            const updatedUser = { ...currentUser, password: newPw };
+            await dbService.saveUsers([updatedUser]);
+            setCurrentUser(updatedUser);
+            showToast("비밀번호가 변경되었습니다.", "success");
+          }}
+        />
+      )}
 
       {activePrintRequest && (
         <PrintForm request={activePrintRequest} onClose={() => setActivePrintRequest(null)} />

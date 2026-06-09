@@ -101,7 +101,7 @@ export const dbService = {
     const managerStampSnap = await getDoc(doc(db, USERS_COL, "user_1"));
     const managerStamp = (managerStampSnap.data() as User)?.stampImage;
     const updates = {
-      status: "MANAGER_APPROVED",
+      status: "MANAGER_APPROVED" as const,
       managerApprovalDate: new Date().toISOString().split("T")[0],
       managerSign: managerName,
       managerStamp: managerStamp ?? null,
@@ -118,7 +118,7 @@ export const dbService = {
     const snap = await getDoc(ref);
     if (!snap.exists()) return null;
     const updates = {
-      status: "REJECTED",
+      status: "REJECTED" as const,
       rejectedByRole: Role.MANAGER,
       rejectedByName: managerName,
       rejectionReason: reason,
@@ -156,7 +156,7 @@ export const dbService = {
     const snap = await getDoc(ref);
     if (!snap.exists()) return null;
     const updates = {
-      status: "REJECTED",
+      status: "REJECTED" as const,
       rejectedByRole: Role.DIRECTOR,
       rejectedByName: directorName,
       rejectionReason: reason,

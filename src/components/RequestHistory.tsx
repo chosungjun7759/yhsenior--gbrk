@@ -81,7 +81,7 @@ export default function RequestHistory({
                 <p className="text-xs text-slate-600">
                   {formatDate(req.startDate)} ~ {formatDate(req.endDate)}
                   {req.duration > 0 && (
-                    <span className="ml-1.5 text-red-400 font-semibold">({req.duration}일)</span>
+                    <span className="ml-1.5 text-red-400 font-semibold font-mono">({req.duration}일)</span>
                   )}
                 </p>
                 <p className="text-[11px] text-slate-400 mt-0.5 truncate">{req.reason}</p>

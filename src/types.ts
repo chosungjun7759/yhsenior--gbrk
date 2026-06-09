@@ -11,6 +11,7 @@ export interface User {
   title: string;
   initialLeave: number;
   stampImage?: string; // base64 도장 이미지
+  password?: string;   // 비밀번호 (기본값: "0000")
 }
 
 export enum LeaveType {

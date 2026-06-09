@@ -111,7 +111,7 @@ export default function ApprovalBox({ currentUser, requests, onApprove, onReject
                 <p className="text-sm font-bold text-slate-800">{req.userName} <span className="text-slate-400 font-normal">({req.userTitle})</span></p>
                 <p className="text-xs text-slate-400 mt-0.5">
                   {formatDate(req.startDate)} ~ {formatDate(req.endDate)}
-                  {req.duration > 0 && <span className="ml-1 text-red-400 font-semibold">( {req.duration}일 차감)</span>}
+                  {req.duration > 0 && <span className="ml-1 text-red-400 font-semibold">({req.duration}일 차감)</span>}
                 </p>
               </div>
             </div>
@@ -124,11 +124,6 @@ export default function ApprovalBox({ currentUser, requests, onApprove, onReject
           {/* 상세 펼침 */}
           {expanded === req.id && (
             <div className="border-t border-slate-100 px-4 py-4 bg-slate-50 space-y-3">
-              {/* 인수인계서 인라인 뷰어 추가 */}
-              {req.handoverItems && req.handoverItems.length > 0 && (
-                <HandoverViewer request={req} />
-              )}
-
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div><span className="text-slate-400">신청인</span><br /><span className="font-bold text-slate-700">{req.userName} ({req.userTitle})</span></div>
                 <div><span className="text-slate-400">휴가 종류</span><br /><span className="font-bold text-slate-700">{LEAVE_TYPE_LABELS[req.leaveType]}</span></div>
@@ -136,6 +131,9 @@ export default function ApprovalBox({ currentUser, requests, onApprove, onReject
                 <div><span className="text-slate-400">차감 연차</span><br /><span className="font-bold text-red-500">{req.duration}일</span></div>
                 <div className="col-span-2"><span className="text-slate-400">신청 사유</span><br /><span className="font-bold text-slate-700">{req.reason}</span></div>
               </div>
+
+              {/* 연결된 인수인계서 */}
+              <HandoverViewer request={req} />
 
               {/* 반려 사유 입력 모드 */}
               {rejectMode === req.id ? (

@@ -53,7 +53,7 @@ export default function StampUploader({ currentUser, onClose, onSaved }: StampUp
         width:"100%", maxWidth:"400px", boxShadow:"0 20px 60px rgba(0,0,0,.3)"
       }}>
         {/* 헤더 */}
-        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:"20px" }}>
+        <div style={{ display:"flex", alignItems:"center", justifyBetween:"space-between", marginBottom:"20px" }}>
           <div style={{ display:"flex", alignItems:"center", gap:"10px" }}>
             <Stamp size={20} color="#1d4ed8" />
             <span style={{ fontSize:"15px", fontWeight:800, color:"#0f172a" }}>

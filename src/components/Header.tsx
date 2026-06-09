@@ -1,14 +1,15 @@
 import { User, Role } from "../types";
-import { LogOut, Heart, Stamp, Users } from "lucide-react";
+import { LogOut, Heart, Stamp, Users, Lock } from "lucide-react";
 
 interface HeaderProps {
   currentUser: User;
   onLogout: () => void;
   onStampOpen: () => void;
   onStaffManage: () => void;
+  onChangePassword: () => void;
 }
 
-export default function Header({ currentUser, onLogout, onStampOpen, onStaffManage }: HeaderProps) {
+export default function Header({ currentUser, onLogout, onStampOpen, onStaffManage, onChangePassword }: HeaderProps) {
   const roleBadge =
     currentUser.role === Role.DIRECTOR
       ? { label: "관장 👑", cls: "bg-indigo-100 text-indigo-800 border-indigo-200" }
@@ -49,6 +50,15 @@ export default function Header({ currentUser, onLogout, onStampOpen, onStaffMana
               <span className="hidden sm:inline">직원 관리</span>
             </button>
           )}
+          {/* 비밀번호 변경 버튼 */}
+          <button
+            onClick={onChangePassword}
+            title="비밀번호 변경"
+            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-purple-600 border border-slate-200 hover:border-purple-300 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
+          >
+            <Lock className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">비밀번호</span>
+          </button>
           {/* 도장 등록 버튼 */}
           <button
             onClick={onStampOpen}
