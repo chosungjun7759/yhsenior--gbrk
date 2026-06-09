@@ -10,7 +10,7 @@ import {
   writeBatch
 } from "firebase/firestore";
 import { db } from "./firebase";
-import { User, LeaveRequest, Role, LeaveType, ApprovalStatus } from "./types";
+import { User, LeaveRequest, Role, LeaveType } from "./types";
 import { INITIAL_USERS } from "./data";
 
 const USERS_COL = "users";
@@ -101,7 +101,7 @@ export const dbService = {
     const managerStampSnap = await getDoc(doc(db, USERS_COL, "user_1"));
     const managerStamp = (managerStampSnap.data() as User)?.stampImage;
     const updates = {
-      status: "MANAGER_APPROVED" as ApprovalStatus,
+      status: "MANAGER_APPROVED",
       managerApprovalDate: new Date().toISOString().split("T")[0],
       managerSign: managerName,
       managerStamp: managerStamp ?? null,
@@ -118,7 +118,7 @@ export const dbService = {
     const snap = await getDoc(ref);
     if (!snap.exists()) return null;
     const updates = {
-      status: "REJECTED" as ApprovalStatus,
+      status: "REJECTED",
       rejectedByRole: Role.MANAGER,
       rejectedByName: managerName,
       rejectionReason: reason,
@@ -156,7 +156,7 @@ export const dbService = {
     const snap = await getDoc(ref);
     if (!snap.exists()) return null;
     const updates = {
-      status: "REJECTED" as ApprovalStatus,
+      status: "REJECTED",
       rejectedByRole: Role.DIRECTOR,
       rejectedByName: directorName,
       rejectionReason: reason,
@@ -200,8 +200,13 @@ export const dbService = {
   // ── 실시간 구독 ──────────────────────────────────────────
 
   subscribeUsers(callback: (users: User[]) => void) {
-    return onSnapshot(collection(db, USERS_COL), snap => {
-      callback(snap.docs.map(d => d.data() as User));
+    return onSnapshot(collection(db, USERS_COL), async snap => {
+      if (snap.empty) {
+        // 최초 실행 시 초기 직원 데이터 자동 생성
+        await this.initUsers();
+      } else {
+        callback(snap.docs.map(d => d.data() as User));
+      }
     });
   },
 
