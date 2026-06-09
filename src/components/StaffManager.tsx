@@ -30,6 +30,8 @@ export default function StaffManager({ users, onClose, onSaved }: StaffManagerPr
   const [addMode, setAddMode] = useState(false);
   const [form, setForm] = useState(emptyForm());
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [editLeaveId, setEditLeaveId] = useState<string | null>(null);
+  const [editLeaveVal, setEditLeaveVal] = useState<string>("");
   const [saved, setSaved] = useState(false);
 
   // 직원 추가
@@ -65,7 +67,7 @@ export default function StaffManager({ users, onClose, onSaved }: StaffManagerPr
   const inputCls = "w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 bg-white";
 
   return (
-    <div style={{ position:"fixed", inset:0, zIndex:8800, background:"rgba(10,15,30,.78)", display:"flex", alignItems:"center", justifyContent:"center", padding:"24px", overflowY:"auto" }}>
+    <div style={{ position:"fixed", inset:0, zIndex:8800, background:"rgba(10,15,30,.78)", display:"flex", alignItems:"center", justifycontent:"center", padding:"24px", overflowY:"auto" }}>
       <div style={{ background:"#fff", borderRadius:"20px", padding:"28px", width:"100%", maxWidth:"560px", boxShadow:"0 20px 60px rgba(0,0,0,.3)", maxHeight:"90vh", overflowY:"auto" }}>
 
         {/* 헤더 */}
@@ -103,7 +105,45 @@ export default function StaffManager({ users, onClose, onSaved }: StaffManagerPr
                   {user.role === Role.DIRECTOR ? "관장" : user.role === Role.MANAGER ? "과장" : "직원"}
                 </span>
               </div>
-              <div className="text-center text-sm font-mono font-bold text-slate-700">{user.initialLeave}일</div>
+              <div className="text-center">
+                {editLeaveId === user.id ? (
+                  <div className="flex items-center justify-center gap-1">
+                    <input
+                      type="number" step="0.5" min="0" max="30"
+                      value={editLeaveVal}
+                      onChange={e => setEditLeaveVal(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === "Enter") {
+                          const val = parseFloat(editLeaveVal);
+                          if (!isNaN(val) && val >= 0) {
+                            setLocalUsers(prev => prev.map(u => u.id === user.id ? { ...u, initialLeave: val } : u));
+                          }
+                          setEditLeaveId(null);
+                        }
+                        if (e.key === "Escape") setEditLeaveId(null);
+                      }}
+                      onBlur={() => {
+                        const val = parseFloat(editLeaveVal);
+                        if (!isNaN(val) && val >= 0) {
+                          setLocalUsers(prev => prev.map(u => u.id === user.id ? { ...u, initialLeave: val } : u));
+                        }
+                        setEditLeaveId(null);
+                      }}
+                      autoFocus
+                      className="w-16 text-center border border-blue-400 rounded-lg px-1 py-0.5 text-sm font-mono font-bold text-blue-600 bg-blue-50 focus:outline-none"
+                    />
+                    <span className="text-xs text-slate-400">일</span>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => { setEditLeaveId(user.id); setEditLeaveVal(String(user.initialLeave)); }}
+                    className="text-sm font-mono font-bold text-slate-700 hover:text-blue-600 hover:bg-blue-50 px-2 py-0.5 rounded-lg transition-colors cursor-pointer"
+                    title="클릭하여 수정"
+                  >
+                    {user.initialLeave}일
+                  </button>
+                )}
+              </div>
               <div className="text-center text-[10px] text-slate-400">{user.id}</div>
               <div className="flex justify-center">
                 {user.role !== Role.DIRECTOR && (
