@@ -135,7 +135,7 @@ export const dbService = {
     const directorStamp = (directorStampSnap.data() as User)?.stampImage;
     const req = snap.data() as LeaveRequest;
     const updates: Partial<LeaveRequest> = {
-      status: "FINAL_APPROVED",
+      status: "FINAL_APPROVED" as const,
       directorApprovalDate: new Date().toISOString().split("T")[0],
       directorSign: directorName,
       directorStamp: directorStamp ?? undefined,

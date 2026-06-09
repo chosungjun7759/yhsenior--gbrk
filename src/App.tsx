@@ -11,474 +11,319 @@ import StampUploader from "./components/StampUploader";
 import LeaveResetManager from "./components/LeaveResetManager";
 import LeaveEditModal from "./components/LeaveEditModal";
 import StaffManager from "./components/StaffManager";
-import { LoginPasswordModal, ChangePasswordModal } from "./components/PasswordModal";
+import LoginScreen from "./components/LoginScreen";
+import ChangePasswordModal from "./components/ChangePasswordModal";
+import { auth } from "./firebase";
+import { onAuthStateChanged, signOut } from "firebase/auth";
 import {
   Heart, Plus, CheckSquare, Users,
-  RefreshCw, BadgeCheck, ArrowLeft
+  RefreshCw, BadgeCheck, PencilLine
 } from "lucide-react";
 
-type AdminTab = "APPLY" | "APPROVAL" | "STATUS" | "HISTORY";
-
 export default function App() {
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+
   const [users, setUsers] = useState<User[]>([]);
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [adminTab, setAdminTab] = useState<AdminTab>("APPROVAL");
-  const [isApplyingFormOpen, setIsApplyingFormOpen] = useState(false);
-  const [activePrintRequest, setActivePrintRequest] = useState<LeaveRequest | null>(null);
-  const [showStampUploader, setShowStampUploader] = useState(false);
-  const [showLeaveReset, setShowLeaveReset] = useState(false);
-  const [editTarget, setEditTarget] = useState<LeaveRequest | null>(null);
-  const [showStaffManager, setShowStaffManager] = useState(false);
-  const [showDashboard, setShowDashboard] = useState(false);
-  const [loginTarget, setLoginTarget] = useState<User | null>(null);
-  const [loginError, setLoginError] = useState("");
-  const [showChangePw, setShowChangePw] = useState(false);
-  const [myRemainingLeave, setMyRemainingLeave] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
+  const [remainingLeave, setRemainingLeave] = useState<number>(0);
 
-  // Firestore 실시간 구독
+  // 모달 제어
+  const [isStampOpen, setIsStampOpen] = useState(false);
+  const [isStaffOpen, setIsStaffOpen] = useState(false);
+  const [isChangePwOpen, setIsChangePwOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+
+  // 1. Firebase Auth 감시
   useEffect(() => {
-    const unsubUsers = dbService.subscribeUsers(u => {
-      setUsers(u);
+    const unsubAuth = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        // 이미 로드된 users가 없을 수도 있으므로, Firestore에서 최신 목록 가져옴
+        const allUsers = await dbService.getUsers();
+        setUsers(allUsers);
+        // 이메일로 매칭되는 사용자 정보 탐색
+        const matched = allUsers.find(u => u.email === firebaseUser.email);
+        if (matched) {
+          setCurrentUser(matched);
+        } else {
+          // 일치하는 이메일이 없는 최초 진입자나 구글 로그인의 경우, 임시 유저 설정 또는 자동 로그아웃
+          alert("복지관 직원 데이터베이스에 등록되지 않은 이메일입니다.\n관리자에게 문의해주세요.");
+          await signOut(auth);
+          setCurrentUser(null);
+        }
+      } else {
+        setCurrentUser(null);
+      }
       setLoading(false);
     });
-    const unsubReqs = dbService.subscribeRequests(r => {
-      setRequests(r);
-    });
-    return () => { unsubUsers(); unsubReqs(); };
+
+    return () => unsubAuth();
   }, []);
 
-  // 잔여연차 실시간 계산
+  // 2. 실시간 데이터베이스 구독 (로그인 완료된 경우)
   useEffect(() => {
     if (!currentUser) return;
-    dbService.getRemainingLeave(currentUser.id).then(setMyRemainingLeave);
-  }, [currentUser, requests]);
 
+    const unsubUsers = dbService.subscribeUsers((allUsers) => {
+      setUsers(allUsers);
+      // 실시간으로 내 정보 동기화
+      const matched = allUsers.find(u => u.id === currentUser.id);
+      if (matched) setCurrentUser(matched);
+    });
+
+    const unsubRequests = dbService.subscribeRequests((allReqs) => {
+      setRequests(allReqs);
+    });
+
+    return () => {
+      unsubUsers();
+      unsubRequests();
+    };
+  }, [currentUser?.id]);
+
+  // 3. 내 잔여 연차 실시간 동적 계산
   useEffect(() => {
-    if (toast) {
-      const t = setTimeout(() => setToast(null), 4000);
-      return () => clearTimeout(t);
-    }
-  }, [toast]);
+    if (!currentUser) return;
+    dbService.getRemainingLeave(currentUser.id).then(setRemainingLeave);
+  }, [currentUser?.id, requests]);
 
-  const showToast = (message: string, type: "success" | "error" | "info") => {
-    setToast({ message, type });
+  // 이메일 비밀번호 로그인 완료 콜백
+  const handleLoginSuccess = async () => {
+    // Auth 감시자에서 처리하므로 여기선 로딩 해제 정도만 처리
+    setLoading(true);
+  };
+
+  // 로그아웃
+  const handleLogout = async () => {
+    if (confirm("정말 로그아웃 하시겠습니까?")) {
+      await signOut(auth);
+      setCurrentUser(null);
+    }
+  };
+
+  // ── 비즈니스 액션들 ────────────────────────────────────────
+
+  // 결재 상신
+  const handleRequestSubmit = async (formData: Omit<LeaveRequest, "id" | "createdAt" | "status">) => {
+    try {
+      await dbService.addRequest(formData);
+    } catch {
+      alert("휴가 신청 전송에 실패했습니다. 입력값을 확인해 주세요.");
+    }
+  };
+
+  // 결재선 삭제 (신청 취소)
+  const handleRequestDelete = async (id: string) => {
+    if (confirm("정말 이 휴가신청을 취소하고 회수하시겠습니까?")) {
+      await dbService.deleteRequest(id);
+    }
+  };
+
+  // 도장 이미지 저장
+  const handleStampSave = async (base64: string) => {
+    if (!currentUser) return;
+    await dbService.saveUserStamp(currentUser.id, base64);
+  };
+
+  // 1급 결재선 관리자(과장) 승인/반려
+  const handleManagerApprove = async (id: string) => {
+    if (!currentUser) return;
+    await dbService.approveByManager(id, currentUser.name);
+  };
+  const handleManagerReject = async (id: string, reason: string) => {
+    if (!currentUser) return;
+    await dbService.rejectByManager(id, currentUser.name, reason);
+  };
+
+  // 최종 전결권자(관장) 승인/반려
+  const handleDirectorApprove = async (id: string) => {
+    if (!currentUser) return;
+    await dbService.approveByDirector(id, currentUser.name);
+  };
+  const handleDirectorReject = async (id: string, reason: string) => {
+    if (!currentUser) return;
+    await dbService.rejectByDirector(id, currentUser.name, reason);
+  };
+
+  // 임직원 목록 전체 수정 (관장)
+  const handleStaffSave = async (updatedUsers: User[]) => {
+    await dbService.saveUsers(updatedUsers);
+  };
+
+  // 마스터 DB 완전 무차별 초기화 (관장)
+  const handleDatabaseReset = async () => {
+    await dbService.resetDatabase();
+    alert("데이터베이스가 깔끔하게 초기화되었습니다.\n초기 직원 데이터와 연차가 정상 복구되었습니다.");
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-100 flex items-center justify-center">
-        <div className="text-center p-6 bg-white rounded-2xl border border-slate-200 shadow-sm">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto" />
-          <p className="text-xs text-slate-500 font-bold mt-4">연희노인복지관 시스템 로딩 중...</p>
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-center space-y-3">
+          <RefreshCw className="h-8 w-8 animate-spin text-blue-600 mx-auto" />
+          <p className="text-sm font-bold text-slate-500">정보 동기화 중...</p>
         </div>
       </div>
     );
   }
 
   if (!currentUser) {
-    return (
-      <div className="min-h-screen bg-slate-100 flex flex-col items-center justify-center p-6">
-        {/* 비밀번호 입력 모달 — 로그인 화면 위에 표시 */}
-        {loginTarget && (
-          <LoginPasswordModal
-            user={loginTarget}
-            error={loginError}
-            onConfirm={(pw) => {
-              const correct = loginTarget.password ?? "0000";
-              if (pw !== correct) {
-                setLoginError("비밀번호가 틀립니다. 다시 입력해주세요.");
-                return;
-              }
-              setCurrentUser(loginTarget);
-              setLoginTarget(null);
-              setLoginError("");
-              setIsApplyingFormOpen(false);
-              if (loginTarget.role === Role.DIRECTOR || loginTarget.role === Role.MANAGER) {
-                setAdminTab("APPROVAL");
-              }
-              showToast(`${loginTarget.name}님으로 로그인했습니다.`, "info");
-            }}
-            onCancel={() => { setLoginTarget(null); setLoginError(""); }}
-          />
-        )}
-        <div className="max-w-md w-full bg-white rounded-2xl border border-slate-200 shadow-xl p-8 space-y-6">
-          <div className="text-center space-y-2">
-            <div className="bg-blue-600 text-white rounded-2xl p-3.5 inline-block shadow-md">
-              <Heart className="h-8 w-8 fill-current" />
-            </div>
-            <h1 className="text-2xl font-black tracking-tight text-slate-900">연희노인복지관</h1>
-            <p className="text-xs bg-slate-100 text-slate-500 font-semibold py-1.5 px-3 rounded-lg inline-block">
-              전자결재 휴가관리 시스템
-            </p>
-            <p className="text-xs text-slate-400 pt-1">로그인할 계정을 선택하세요.</p>
-          </div>
-
-          <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
-            {users.map(user => {
-              const badge =
-                user.role === Role.DIRECTOR
-                  ? { label: "관장 👑", cls: "bg-indigo-100 text-indigo-800 border-indigo-200" }
-                  : user.role === Role.MANAGER
-                  ? { label: "과장 ★", cls: "bg-amber-100 text-amber-800 border-amber-200" }
-                  : { label: "직원", cls: "bg-slate-100 text-slate-600 border-slate-200" };
-              return (
-                <button
-                  key={user.id}
-                  onClick={() => {
-                    setLoginTarget(user);
-                    setLoginError("");
-                  }}
-                  className="w-full text-left p-3.5 border border-slate-150 hover:border-blue-400 bg-slate-50 hover:bg-blue-50/30 rounded-xl flex items-center justify-between transition-all group cursor-pointer"
-                >
-                  <div>
-                    <p className="text-sm font-bold text-slate-800 group-hover:text-blue-700 transition-colors">
-                      {user.name} ({user.title})
-                    </p>
-                    <p className="text-[10px] text-slate-400 mt-0.5">초기 연차: {user.initialLeave}일</p>
-                  </div>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${badge.cls}`}>
-                    {badge.label}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="border-t border-slate-100 pt-4 text-center">
-            <button
-              onClick={handleResetDatabase}
-              className="text-slate-400 hover:text-amber-600 font-bold text-xs flex items-center gap-1.5 mx-auto transition-colors cursor-pointer"
-            >
-              <RefreshCw className="h-3 w-3" />
-              데이터베이스 초기화
-            </button>
-          </div>
-        </div>
-      </div>
-    );
+    return <LoginScreen onLogin={handleLoginSuccess} />;
   }
-
-  // ── 핸들러 ───────────────────────────────────────────────
-
-  const handleLeaveSubmit = async (formData: Omit<LeaveRequest, "id" | "createdAt" | "status">) => {
-    try {
-      await dbService.addRequest(formData);
-      showToast(
-        currentUser.role === Role.MANAGER
-          ? "기안이 상신되어 관장 결재 단계로 이첩되었습니다."
-          : "휴가 신청이 완료되었습니다. 과장 결재를 기다려주세요.",
-        "success"
-      );
-    } catch { showToast("신청에 실패했습니다.", "error"); }
-  };
-
-  const handleApprove = async (requestId: string) => {
-    try {
-      if (currentUser.role === Role.MANAGER) {
-        await dbService.approveByManager(requestId, currentUser.name);
-        showToast("1차 승인 완료. 관장 최종 결재로 상신되었습니다.", "success");
-      } else if (currentUser.role === Role.DIRECTOR) {
-        await dbService.approveByDirector(requestId, currentUser.name);
-        showToast("최종 승인 처리가 완료되었습니다.", "success");
-      }
-    } catch { showToast("승인 처리에 실패했습니다.", "error"); }
-  };
-
-  const handleReject = async (requestId: string, reason: string) => {
-    try {
-      if (currentUser.role === Role.MANAGER) await dbService.rejectByManager(requestId, currentUser.name, reason);
-      else if (currentUser.role === Role.DIRECTOR) await dbService.rejectByDirector(requestId, currentUser.name, reason);
-      showToast("반려 처리되었습니다.", "info");
-    } catch { showToast("반려 처리에 실패했습니다.", "error"); }
-  };
-
-  const handleDeleteRequest = async (requestId: string) => {
-    const target = requests.find(r => r.id === requestId);
-    if (!target) return;
-    if (target.status !== "PENDING") {
-      showToast("이미 결재가 진행 중인 문서는 취소할 수 없습니다.", "error");
-      return;
-    }
-    await dbService.deleteRequest(requestId);
-    showToast("신청이 취소되었습니다.", "info");
-  };
-
-  const handleDeleteByDirector = async (requestId: string) => {
-    await dbService.deleteRequest(requestId);
-    setEditTarget(null);
-    showToast("휴가 신청이 삭제되었습니다.", "info");
-  };
-
-  async function handleResetDatabase() {
-    await dbService.resetDatabase();
-    setCurrentUser(null);
-    setAdminTab("APPROVAL");
-    showToast("초기화되었습니다.", "success");
-  }
-
-  const isAdmin = currentUser.role === Role.DIRECTOR || currentUser.role === Role.MANAGER;
-  const pendingCount = (() => {
-    if (currentUser.role === Role.MANAGER)
-      return requests.filter(r => r.status === "PENDING" && r.userId !== currentUser.id).length;
-    if (currentUser.role === Role.DIRECTOR)
-      return requests.filter(r => r.status === "MANAGER_APPROVED").length;
-    return 0;
-  })();
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 pb-20 print:bg-white print:p-0">
+    <div className="min-h-screen bg-slate-100 pb-16">
+      
+      {/* 글로벌 상단 헤더 */}
       <Header
         currentUser={currentUser}
-        onLogout={() => { setCurrentUser(null); showToast("로그아웃 되었습니다.", "info"); }}
-        onStampOpen={() => setShowStampUploader(true)}
-        onStaffManage={() => setShowStaffManager(true)}
-        onChangePassword={() => setShowChangePw(true)}
+        onLogout={handleLogout}
+        onStampOpen={() => setIsStampOpen(true)}
+        onStaffManage={() => setIsStaffOpen(true)}
+        onChangePassword={() => setIsChangePwOpen(true)}
       />
 
-      {/* 비밀번호 변경 모달 */}
-      {showChangePw && currentUser && (
-        <ChangePasswordModal
-          user={currentUser}
-          onClose={() => setShowChangePw(false)}
-          onSave={async (newPw) => {
-            const updatedUser = { ...currentUser, password: newPw };
-            await dbService.saveUsers([updatedUser]);
-            setCurrentUser(updatedUser);
-            showToast("비밀번호가 변경되었습니다.", "success");
-          }}
-        />
-      )}
+      <main className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-6 print:p-0">
 
-      {activePrintRequest && (
-        <PrintForm request={activePrintRequest} onClose={() => setActivePrintRequest(null)} />
-      )}
+        {/* 관장인 경우 헤드 대시보드 */}
+        {currentUser.role === Role.DIRECTOR && (
+          <section className="space-y-3">
+            <h3 className="text-xs font-black text-indigo-700 tracking-wider flex items-center gap-1.5 uppercase">
+              <BadgeCheck className="h-4 w-4" />
+              관장 결재 지원 대시보드
+            </h3>
+            <DirectorDashboard users={users} requests={requests} />
+          </section>
+        )}
 
-      {showStaffManager && currentUser?.role === Role.DIRECTOR && (
-        <StaffManager
-          users={users}
-          onClose={() => setShowStaffManager(false)}
-          onSaved={async (updatedUsers) => {
-            await dbService.saveUsers(updatedUsers);
-            showToast("직원 정보가 업데이트되었습니다.", "success");
-          }}
-        />
-      )}
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
+          
+          {/* 좌측: 휴가 상신 폼 */}
+          <div className="md:col-span-5 bg-white rounded-2xl border border-slate-200 shadow-sm p-5 sm:p-6 space-y-5 print:hidden">
+            <div className="flex items-center gap-2">
+              <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
+                <PencilLine className="h-4 w-4" />
+              </div>
+              <h2 className="text-base font-black text-slate-900 tracking-tight">전자결재 휴가계 작성</h2>
+            </div>
+            
+            <LeaveRequestForm
+              currentUser={currentUser}
+              remainingLeave={remainingLeave}
+              onSubmit={handleRequestSubmit}
+            />
+          </div>
 
-      {editTarget && currentUser?.role === Role.DIRECTOR && (
-        <LeaveEditModal
-          request={editTarget}
-          onClose={() => setEditTarget(null)}
-          onSave={async (updated) => {
-            await dbService.saveRequests([updated]);
-            setEditTarget(null);
-            showToast("휴가 내용이 수정되었습니다.", "success");
-          }}
-          onDelete={(id) => handleDeleteByDirector(id)}
-        />
-      )}
+          {/* 우측 결재 관리 박스 및 문서 조회 목록 */}
+          <div className="md:col-span-7 space-y-6">
+            
+            {/* 결재 대기 분석함 */}
+            <ApprovalBox
+              currentUserRole={currentUser.role}
+              currentUserId={currentUser.id}
+              requests={requests}
+              onApprove={currentUser.role === Role.DIRECTOR ? handleDirectorApprove : handleManagerApprove}
+              onReject={currentUser.role === Role.DIRECTOR ? handleDirectorReject : handleManagerReject}
+            />
 
-      {showLeaveReset && currentUser.role === Role.DIRECTOR && (
-        <LeaveResetManager
-          users={users}
-          onClose={() => setShowLeaveReset(false)}
-          onSaved={async (updatedUsers) => {
-            await dbService.saveUsers(updatedUsers);
-            showToast("연차가 업데이트되었습니다.", "success");
-          }}
-        />
-      )}
+            {/* 신청 서류 역사 목록 */}
+            <RequestHistory
+              currentUser={currentUser}
+              requests={requests}
+              onDelete={handleRequestDelete}
+            />
 
-      {showStampUploader && currentUser && (
+            {/* 연차 수동 강제 수선용 어드민 테이블 (관장 단독) */}
+            {currentUser.role === Role.DIRECTOR && (
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 sm:p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-black text-slate-800 flex items-center gap-1.5 uppercase tracking-wider">
+                    <Users className="h-4 w-4" />
+                    직원 잔여/기본 연차 직접 조정
+                  </h3>
+                </div>
+                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-black text-slate-400">
+                        <th className="px-3.5 py-2">성명</th>
+                        <th className="px-3.5 py-2">직위</th>
+                        <th className="px-3.5 py-2">기본 연차</th>
+                        <th className="px-3.5 py-2 text-right">조작</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-xs font-bold text-slate-700">
+                      {users.map(u => (
+                        <tr key={u.id} className="hover:bg-slate-50/50">
+                          <td className="px-3.5 py-2.5">{u.name}</td>
+                          <td className="px-3.5 py-2.5 text-slate-400 text-[11px]">{u.title}</td>
+                          <td className="px-3.5 py-2.5 font-mono">{u.initialLeave}일</td>
+                          <td className="px-3.5 py-2.5 text-right">
+                            <button
+                              onClick={() => setEditingUser(u)}
+                              className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold text-[10px] px-2 py-1 rounded transition-colors cursor-pointer"
+                            >
+                              수정
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* 마스터 초기화 매니저 */}
+            <LeaveResetManager
+              currentUser={currentUser}
+              onReset={handleDatabaseReset}
+            />
+
+          </div>
+
+        </div>
+      </main>
+
+      {/* ── 각종 제어 모달 및 레이어 ──────────────────────────── */}
+
+      {/* 도장 업로더 */}
+      {isStampOpen && (
         <StampUploader
           currentUser={currentUser}
-          onClose={() => setShowStampUploader(false)}
-          onSaved={() => showToast("도장이 저장되었습니다.", "success")}
+          onClose={() => setIsStampOpen(false)}
+          onSaved={handleStampSave}
         />
       )}
 
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 mt-8 print:hidden">
-        {toast && (
-          <div className="fixed bottom-6 right-6 z-[5000] px-5 py-3.5 rounded-xl shadow-2xl flex items-center gap-2.5 bg-slate-900 border border-slate-700 text-white text-xs font-bold">
-            <BadgeCheck className="h-4 w-4 text-blue-400 shrink-0" />
-            <p>{toast.message}</p>
-          </div>
-        )}
+      {/* 직원 대장 관리 모달 (관장) */}
+      {isStaffOpen && (
+        <StaffManager
+          users={users}
+          onClose={() => setIsStaffOpen(false)}
+          onSaved={handleStaffSave}
+        />
+      )}
 
-        {isAdmin ? (
-          <div className="space-y-6">
-            <div className="grid grid-cols-2 gap-3">
-              {(() => {
-                const menus = [
-                  { key:"APPLY",    icon:<Plus        className={`h-7 w-7 ${adminTab==="APPLY"?"text-white":"text-blue-500"}`} />,    label:"휴가 신청", sub:"신청서 작성",   badge:undefined },
-                  { key:"APPROVAL", icon:<CheckSquare className={`h-7 w-7 ${adminTab==="APPROVAL"?"text-white":"text-amber-500"}`} />, label:"결재 대기", sub:"승인 처리함", badge:pendingCount },
-                ];
-                return menus.map(({ key, icon, label, sub, badge }) => (
-                  <button
-                    key={key}
-                    onClick={() => setAdminTab(key as AdminTab)}
-                    className={`flex flex-col items-center justify-center p-5 rounded-2xl border transition-all text-center gap-1.5 shadow-sm cursor-pointer ${
-                      adminTab === key
-                        ? "bg-blue-600 border-blue-600 text-white"
-                        : "bg-white border-slate-200 text-slate-700 hover:border-blue-300 hover:bg-slate-50"
-                    }`}
-                  >
-                    {icon}
-                    <span className="text-sm font-bold flex items-center gap-1.5">
-                      {label}
-                      {badge && badge > 0 && (
-                        <span className="bg-rose-500 text-white text-[10px] font-black w-5 h-5 rounded-full flex items-center justify-center animate-pulse">
-                          {badge}
-                        </span>
-                      )}
-                    </span>
-                    <span className={`text-[11px] ${adminTab===key?"text-blue-100":"text-slate-400"}`}>{sub}</span>
-                  </button>
-                ));
-              })()}
-            </div>
+      {/* 연차 조정 모달 */}
+      {editingUser && (
+        <LeaveEditModal
+          user={editingUser}
+          onClose={() => setEditingUser(null)}
+          onSaved={async (u) => {
+            const up = users.map(us => us.id === u.id ? u : us);
+            await handleStaffSave(up);
+          }}
+        />
+      )}
 
-            <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 shadow-sm">
-              {adminTab === "APPLY" && (
-                <div className="space-y-4">
-                  <h3 className="text-base font-black text-slate-900 border-b pb-3">새로운 휴가 신청서 작성</h3>
-                  <LeaveRequestForm
-                    currentUser={currentUser}
-                    remainingLeave={myRemainingLeave}
-                    onSubmit={async fd => { await handleLeaveSubmit(fd); setAdminTab("APPROVAL"); }}
-                  />
-                </div>
-              )}
-              {adminTab === "APPROVAL" && (
-                <div className="space-y-4">
-                  <h3 className="text-base font-black text-slate-900 border-b pb-3">결재 대기 목록</h3>
-                  <ApprovalBox currentUser={currentUser} requests={requests} onApprove={handleApprove} onReject={handleReject} />
-                </div>
-              )}
-            </div>
+      {/* 비밀번호 변경 모달 */}
+      {isChangePwOpen && (
+        <ChangePasswordModal
+          onClose={() => setIsChangePwOpen(false)}
+        />
+      )}
 
-            <div className="bg-white border border-slate-200 rounded-2xl px-5 py-4 flex items-center justify-between shadow-sm">
-              <span className="text-xs font-bold text-slate-500">내 잔여 연차</span>
-              <div className="flex items-center gap-2">
-                {currentUser.role === Role.DIRECTOR && (
-                  <>
-                    <button
-                      onClick={() => setShowDashboard(d => !d)}
-                      className={`flex items-center gap-1.5 text-xs border px-3 py-1.5 rounded-lg transition-colors cursor-pointer font-bold ${showDashboard ? "bg-emerald-600 border-emerald-600 text-white" : "text-emerald-600 border-emerald-200 bg-emerald-50 hover:bg-emerald-100"}`}
-                    >
-                      <Users className="h-3.5 w-3.5" />
-                      {showDashboard ? "현황 닫기" : "연차 현황"}
-                    </button>
-                    <button
-                      onClick={() => setShowLeaveReset(true)}
-                      className="flex items-center gap-1.5 text-xs text-amber-600 hover:text-amber-700 border border-amber-200 hover:border-amber-300 bg-amber-50 hover:bg-amber-100 px-3 py-1.5 rounded-lg transition-colors cursor-pointer font-bold"
-                    >
-                      <RefreshCw className="h-3.5 w-3.5" />
-                      연차 초기화
-                    </button>
-                  </>
-                )}
-                <span className="text-xl font-black text-blue-600 font-mono">{myRemainingLeave}일</span>
-              </div>
-            </div>
-
-            {showDashboard && currentUser.role === Role.DIRECTOR && (
-              <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-                <div className="flex border-b border-slate-200">
-                  {(["STATUS","HISTORY"] as const).map(tab => (
-                    <button
-                      key={tab}
-                      onClick={() => setAdminTab(tab)}
-                      className={`flex-1 py-3 text-xs font-bold transition-colors cursor-pointer ${adminTab===tab?"bg-blue-600 text-white":"bg-white text-slate-600 hover:bg-slate-50"}`}
-                    >
-                      {tab==="STATUS" ? "📊 연차 현황" : "📋 사용 내역 / 결재 내역"}
-                    </button>
-                  ))}
-                </div>
-                <div className="p-6">
-                  {adminTab === "STATUS" && (
-                    <DirectorDashboard users={users} requests={requests} onlyStatus />
-                  )}
-                  {adminTab === "HISTORY" && (
-                    <div className="space-y-8">
-                      <DirectorDashboard users={users} requests={requests} onlyMonthly />
-                      <div className="border-t pt-6 space-y-4">
-                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">전체 결재 내역 / 인쇄</h3>
-                        <RequestHistory
-                          currentUser={currentUser} requests={requests}
-                          onPrintSelect={req => setActivePrintRequest(req)}
-                          onDeleteRequest={currentUser.role === Role.DIRECTOR ? handleDeleteByDirector : handleDeleteRequest}
-                          onEditRequest={req => setEditTarget(req)}
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
-        ) : (
-          <div className="space-y-6">
-            <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm flex flex-col items-center text-center space-y-2">
-              <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">나의 잔여 연차</span>
-              <div className="text-5xl font-black font-mono text-blue-600">
-                {myRemainingLeave}
-                <span className="text-lg font-bold text-slate-400 ml-2">/ {currentUser.initialLeave}일</span>
-              </div>
-              <p className="text-xs text-slate-400">최종 승인 시 자동 차감됩니다.</p>
-            </div>
-
-            {!isApplyingFormOpen ? (
-              <button
-                onClick={() => setIsApplyingFormOpen(true)}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 px-6 rounded-2xl shadow-md flex items-center justify-center gap-2 text-sm transition-all cursor-pointer"
-              >
-                <Plus className="h-5 w-5 stroke-[2.5]" />
-                새로운 휴가 신청서 작성하기
-              </button>
-            ) : (
-              <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-5">
-                <div className="flex items-center justify-between border-b pb-4">
-                  <h3 className="text-base font-black text-slate-800">휴가 신청서 작성</h3>
-                  <button
-                    onClick={() => setIsApplyingFormOpen(false)}
-                    className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-800 border border-slate-200 px-3 py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer"
-                  >
-                    <ArrowLeft className="h-3.5 w-3.5" />
-                    돌아가기
-                  </button>
-                </div>
-                <LeaveRequestForm
-                  currentUser={currentUser}
-                  remainingLeave={myRemainingLeave}
-                  onSubmit={async fd => { await handleLeaveSubmit(fd); setIsApplyingFormOpen(false); }}
-                />
-              </div>
-            )}
-
-            {!isApplyingFormOpen && (
-              <div className="space-y-3">
-                <h3 className="text-sm font-black text-slate-700 border-l-4 border-blue-600 pl-3">최근 신청 내역</h3>
-                <RequestHistory
-                  currentUser={currentUser} requests={requests}
-                  onPrintSelect={req => setActivePrintRequest(req)}
-                  onDeleteRequest={currentUser.role === Role.DIRECTOR ? handleDeleteByDirector : handleDeleteRequest}
-                  onEditRequest={req => setEditTarget(req)}
-                  limit={3}
-                />
-              </div>
-            )}
-          </div>
-        )}
-
-        <footer className="mt-16 flex justify-between items-center text-[11px] text-slate-400 border-t border-slate-200 pt-5">
-          <p>© 연희노인복지관. All Rights Reserved.</p>
-          <button onClick={handleResetDatabase} className="hover:text-slate-600 underline cursor-pointer">DB 초기화</button>
-        </footer>
-      </main>
     </div>
   );
 }

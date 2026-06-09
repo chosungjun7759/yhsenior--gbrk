@@ -44,7 +44,7 @@ export default function Header({ currentUser, onLogout, onStampOpen, onStaffMana
             <button
               onClick={onStaffManage}
               title="직원 관리"
-              className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-indigo-600 border border-slate-200 hover:border-indigo-300 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
+              className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-indigo-600 border border-slate-100 hover:border-indigo-300 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
             >
               <Users className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">직원 관리</span>
@@ -54,7 +54,7 @@ export default function Header({ currentUser, onLogout, onStampOpen, onStaffMana
           <button
             onClick={onChangePassword}
             title="비밀번호 변경"
-            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-purple-600 border border-slate-200 hover:border-purple-300 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-purple-600 border border-slate-100 hover:border-purple-300 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
           >
             <Lock className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">비밀번호</span>
@@ -63,14 +63,14 @@ export default function Header({ currentUser, onLogout, onStampOpen, onStaffMana
           <button
             onClick={onStampOpen}
             title="내 도장 등록"
-            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-blue-600 border border-slate-200 hover:border-blue-300 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-blue-600 border border-slate-100 hover:border-blue-300 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
           >
             <Stamp className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">도장 등록</span>
           </button>
           <button
             onClick={onLogout}
-            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-red-600 border border-slate-200 hover:border-red-200 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-red-600 border border-slate-100 hover:border-red-200 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
           >
             <LogOut className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">로그아웃</span>

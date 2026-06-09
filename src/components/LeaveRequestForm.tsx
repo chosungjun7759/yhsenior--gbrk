@@ -61,7 +61,7 @@ export default function LeaveRequestForm({ currentUser, remainingLeave, onSubmit
 
     // 연가 시 인수인계서 필수
     if (leaveType === LeaveType.ANNUAL && (!handoverData || !handoverData.handoverTo)) {
-            setActiveTab("handover");
+      setActiveTab("handover");
       return;
     }
 
@@ -70,7 +70,7 @@ export default function LeaveRequestForm({ currentUser, remainingLeave, onSubmit
       (leaveType === LeaveType.ANNUAL || leaveType === LeaveType.HALF || leaveType === LeaveType.QUARTER) &&
       duration > remainingLeave
     ) {
-      alert(`잔여 연차가 부족합니다.`);
+      alert("잔여 연차가 부족합니다.");
       return;
     }
 
