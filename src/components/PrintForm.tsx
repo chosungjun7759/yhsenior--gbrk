@@ -43,7 +43,7 @@ export default function PrintForm({ request, onClose }: PrintFormProps) {
   const handlePrint = () => {
     // 새 탭에 순수 HTML로 열어서 인쇄
     const w = window.open("", "_blank", "width=900,height=1100");
-    if (!w) { alert("팝업이 차단되었습니다. 팝업을 허용한 후 다시 시도해주세요."); return; }
+    if (!w) {  return; }
     w.document.write(buildHTML());
     w.document.close();
     w.onload = () => { w.focus(); w.print(); };

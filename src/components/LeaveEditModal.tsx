@@ -20,6 +20,7 @@ export default function LeaveEditModal({ request, onSave, onDelete, onClose }: L
   const [replacementTask, setReplacementTask] = useState(request.replacementTask ?? "");
   const [replacementVerifier, setReplacementVerifier] = useState(request.replacementVerifier ?? "");
   const [duration, setDuration] = useState(String(request.duration));
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
 
   const handleSave = () => {
     const updated: LeaveRequest = {
@@ -129,17 +130,27 @@ export default function LeaveEditModal({ request, onSave, onDelete, onClose }: L
 
         {/* 버튼 */}
         <div className="flex gap-3 mt-6">
-          <button
-            onClick={() => {
-              if (window.confirm(`${request.userName}의 휴가 신청을 삭제하시겠습니까?`)) {
-                onDelete(request.id);
-              }
-            }}
-            className="p-3 border border-red-200 rounded-xl text-red-500 bg-red-50 hover:bg-red-100 transition-colors cursor-pointer"
-            title="삭제"
-          >
-            <Trash2 size={16} />
-          </button>
+          {deleteConfirm ? (
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-red-500 font-bold">삭제?</span>
+              <button
+                onClick={() => { onDelete(request.id); setDeleteConfirm(false); }}
+                className="text-xs bg-red-500 hover:bg-red-600 text-white px-2.5 py-2 rounded-xl font-bold cursor-pointer"
+              >확인</button>
+              <button
+                onClick={() => setDeleteConfirm(false)}
+                className="text-xs bg-slate-200 hover:bg-slate-300 text-slate-600 px-2.5 py-2 rounded-xl font-bold cursor-pointer"
+              >취소</button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setDeleteConfirm(true)}
+              className="p-3 border border-red-200 rounded-xl text-red-500 bg-red-50 hover:bg-red-100 transition-colors cursor-pointer"
+              title="삭제"
+            >
+              <Trash2 size={16} />
+            </button>
+          )}
           <button onClick={onClose} className="flex-1 py-3 border border-slate-200 rounded-xl text-sm font-bold text-slate-600 bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer">
             취소
           </button>

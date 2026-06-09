@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { User } from "../types";
 import { dbService } from "../databaseService";
 import { Upload, CheckCircle, X, Stamp } from "lucide-react";
@@ -11,13 +11,15 @@ interface StampUploaderProps {
 
 export default function StampUploader({ currentUser, onClose, onSaved }: StampUploaderProps) {
   const fileRef = useRef<HTMLInputElement>(null);
-  const [preview, setPreview] = useState<string | undefined>(
-    dbService.getUserStamp(currentUser.id)
-  );
+  const [preview, setPreview] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    dbService.getUserStamp(currentUser.id).then(s => setPreview(s));
+  }, [currentUser.id]);
   const [saved, setSaved] = useState(false);
 
   const handleFile = (file: File) => {
-    if (!file.type.startsWith("image/")) { alert("이미지 파일만 업로드 가능합니다."); return; }
+    if (!file.type.startsWith("image/")) {  return; }
     const reader = new FileReader();
     reader.onload = e => {
       const base64 = e.target?.result as string;
@@ -27,15 +29,15 @@ export default function StampUploader({ currentUser, onClose, onSaved }: StampUp
     reader.readAsDataURL(file);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!preview) return;
-    dbService.saveUserStamp(currentUser.id, preview);
+    await dbService.saveUserStamp(currentUser.id, preview);
     setSaved(true);
     setTimeout(() => { onSaved(); onClose(); }, 800);
   };
 
-  const handleDelete = () => {
-    dbService.saveUserStamp(currentUser.id, "");
+  const handleDelete = async () => {
+    await dbService.saveUserStamp(currentUser.id, "");
     setPreview(undefined);
     setSaved(false);
   };
@@ -51,7 +53,7 @@ export default function StampUploader({ currentUser, onClose, onSaved }: StampUp
         width:"100%", maxWidth:"400px", boxShadow:"0 20px 60px rgba(0,0,0,.3)"
       }}>
         {/* 헤더 */}
-        <div style={{ display:"flex", alignItems:"center", justifyValue:"space-between", justifyContent:"space-between", marginBottom:"20px" }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:"20px" }}>
           <div style={{ display:"flex", alignItems:"center", gap:"10px" }}>
             <Stamp size={20} color="#1d4ed8" />
             <span style={{ fontSize:"15px", fontWeight:800, color:"#0f172a" }}>

@@ -35,10 +35,10 @@ export default function HandoverPrint({ request }: HandoverPrintProps) {
         <td style="width:18%;border:1px solid #000;padding:6px 10px">${item.note || ""}</td>
       </tr>`).join("");
 
-    // 빈 행: 4칸 전체 colspan으로 하나로 병합
+    // 빈 행: "이하 여백" 텍스트로 병합
     const blankRow = blankCount > 0
       ? `<tr>
-          <td colspan="4" style="border:1px solid #000;height:${blankCount * 36}px;vertical-align:middle;text-align:center;color:#ccc"></td>
+          <td colspan="4" style="border:1px solid #000;height:${blankCount * 36}px;vertical-align:middle;text-align:center;color:#aaa;font-size:10pt;letter-spacing:.1em">이 하 &nbsp; 여 백</td>
         </tr>`
       : "";
 
@@ -152,7 +152,7 @@ html,body{width:210mm;font-family:'바탕체','Batang',serif;font-size:13pt;colo
 
   const handlePrint = () => {
     const w = window.open("", "_blank", "width=900,height=1100");
-    if (!w) { alert("팝업이 차단되었습니다. 팝업을 허용해 주세요."); return; }
+    if (!w) {  return; }
     w.document.write(buildPrintHTML());
     w.document.close();
     setTimeout(() => { try { w.focus(); w.print(); } catch(e) {} }, 800);
@@ -214,12 +214,12 @@ html,body{width:210mm;font-family:'바탕체','Batang',serif;font-size:13pt;colo
 
             <div className="hp-sheet">
 
-              {/* 제목 단독 */}
+              {/* 제목 단독 — 중앙 */}
               <div style={{ textAlign:"center", fontSize:24, fontWeight:700, letterSpacing:".15em", borderBottom:"2.5px solid #000", paddingBottom:6, marginBottom:0 }}>
                 업 무 인 수 인 계 서
               </div>
 
-              {/* 결재란 — 제목 아래 우측 독립 */}
+              {/* 결재란 — 제목 아래 독립 우측 정렬 */}
               <div style={{ display:"flex", justifyContent:"flex-end", marginTop:8, marginBottom:12 }}>
                 <table style={{ borderCollapse:"collapse", fontSize:11, textAlign:"center" }}>
                   <tbody>
@@ -284,10 +284,10 @@ html,body{width:210mm;font-family:'바탕체','Batang',serif;font-size:13pt;colo
                       <td style={td}>{item.note || ""}</td>
                     </tr>
                   ))}
-                  {/* 빈 행 전체 병합 — 번호/업무명/주요내용/비고 4칸 모두 하나로 */}
+                  {/* 빈 행 — "이하 여백" */}
                   {blankCount > 0 && (
                     <tr>
-                      <td colSpan={4} style={{ ...td, height: blankCount * 28, verticalAlign:"middle", textAlign:"center", color:"#e2e8f0" }}></td>
+                      <td colSpan={4} style={{ ...td, height: blankCount * 28, verticalAlign:"middle", textAlign:"center", color:"#aaa", fontSize:11, letterSpacing:".1em" }}>이 하 &nbsp; 여 백</td>
                     </tr>
                   )}
                 </tbody>

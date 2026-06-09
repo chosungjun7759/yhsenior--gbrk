@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { User } from "../types";
 import { dbService } from "../databaseService";
-import { RefreshCw, X, ChevronDown, CheckCircle } from "lucide-react";
+import { RefreshCw, X, CheckCircle } from "lucide-react";
 
 interface LeaveResetManagerProps {
   users: User[];
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (updatedUsers: User[]) => void;
 }
 
 export default function LeaveResetManager({ users, onClose, onSaved }: LeaveResetManagerProps) {
@@ -17,31 +17,25 @@ export default function LeaveResetManager({ users, onClose, onSaved }: LeaveRese
   const [resetRequests, setResetRequests] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     // 유효성 검사
     for (const user of users) {
       const val = parseFloat(newLeaves[user.id]);
       if (isNaN(val) || val < 0) {
-        alert(`${user.name}의 연차 값이 올바르지 않습니다.`);
-        return;
+                return;
       }
     }
 
-    // 직원별 initialLeave 업데이트
-    const allUsers = dbService.getUsers();
-    const updated = allUsers.map(u => ({
+    const updated = users.map(u => ({
       ...u,
       initialLeave: parseFloat(parseFloat(newLeaves[u.id] ?? String(u.initialLeave)).toFixed(3))
     }));
-    dbService.saveUsers(updated);
-
-    // 결재 내역도 초기화 옵션
     if (resetRequests) {
-      dbService.saveRequests([]);
+      await dbService.resetDatabase();
     }
 
     setSaved(true);
-    setTimeout(() => { onSaved(); onClose(); }, 800);
+    setTimeout(() => { onSaved(updated); onClose(); }, 800);
   };
 
   return (

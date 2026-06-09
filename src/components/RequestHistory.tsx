@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { User, LeaveRequest, Role, LEAVE_TYPE_LABELS, ApprovalStatus } from "../types";
 import { Printer, Trash2, FileText, Pencil } from "lucide-react";
 import HandoverPrint from "./HandoverPrint";
@@ -33,6 +34,7 @@ export default function RequestHistory({
   limit,
 }: RequestHistoryProps) {
   const isAdmin = currentUser.role === Role.DIRECTOR || currentUser.role === Role.MANAGER;
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   // 관장/과장은 전체, 직원은 본인 것만
   const filtered = isAdmin
@@ -54,7 +56,10 @@ export default function RequestHistory({
     <div className="space-y-2.5">
       {displayed.map(req => {
         const statusInfo = STATUS_LABELS[req.status];
-        const canDelete = req.status === "PENDING" && req.userId === currentUser.id;
+        // 직원: PENDING 본인 것만 취소 / 관장: 모든 상태 삭제 가능
+        const canDelete = currentUser.role === Role.DIRECTOR
+          ? true
+          : (req.status === "PENDING" && req.userId === currentUser.id);
         const canEdit = currentUser.role === Role.DIRECTOR;
         const canPrint = req.status === "FINAL_APPROVED";
 
@@ -76,7 +81,7 @@ export default function RequestHistory({
                 <p className="text-xs text-slate-600">
                   {formatDate(req.startDate)} ~ {formatDate(req.endDate)}
                   {req.duration > 0 && (
-                    <span className="ml-1.5 text-red-400 font-semibold">( {req.duration}일)</span>
+                    <span className="ml-1.5 text-red-400 font-semibold">({req.duration}일)</span>
                   )}
                 </p>
                 <p className="text-[11px] text-slate-400 mt-0.5 truncate">{req.reason}</p>
@@ -109,15 +114,27 @@ export default function RequestHistory({
                   </button>
                 )}
                 {canDelete && (
-                  <button
-                    onClick={() => {
-                      if (window.confirm("신청을 취소하시겠습니까?")) onDeleteRequest(req.id);
-                    }}
-                    title="신청 취소"
-                    className="p-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-500 border border-red-100 transition-colors cursor-pointer"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
+                  deleteConfirmId === req.id ? (
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] text-red-500 font-bold whitespace-nowrap">삭제?</span>
+                      <button
+                        onClick={() => { onDeleteRequest(req.id); setDeleteConfirmId(null); }}
+                        className="text-[10px] bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded-lg font-bold cursor-pointer transition-colors"
+                      >확인</button>
+                      <button
+                        onClick={() => setDeleteConfirmId(null)}
+                        className="text-[10px] bg-slate-200 hover:bg-slate-300 text-slate-600 px-2 py-1 rounded-lg font-bold cursor-pointer transition-colors"
+                      >취소</button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setDeleteConfirmId(req.id)}
+                      title={currentUser.role === Role.DIRECTOR ? "삭제" : "신청 취소"}
+                      className="p-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-500 border border-red-100 transition-colors cursor-pointer"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )
                 )}
               </div>
             </div>

@@ -1,12 +1,11 @@
 import { useState } from "react";
 import { User, Role } from "../types";
-import { dbService } from "../databaseService";
 import { X, Plus, Trash2, Save, Users } from "lucide-react";
 
 interface StaffManagerProps {
   users: User[];
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (users: User[]) => void;
 }
 
 const ROLE_OPTIONS = [
@@ -35,7 +34,7 @@ export default function StaffManager({ users, onClose, onSaved }: StaffManagerPr
 
   // 직원 추가
   const handleAdd = () => {
-    if (!form.name.trim()) { alert("이름을 입력해주세요."); return; }
+    if (!form.name.trim()) {  return; }
     const newUser: User = {
       id: "user_" + Date.now(),
       name: form.name.trim(),
@@ -52,16 +51,15 @@ export default function StaffManager({ users, onClose, onSaved }: StaffManagerPr
   const handleDelete = (userId: string) => {
     // 관장/과장은 삭제 불가
     const target = localUsers.find(u => u.id === userId);
-    if (target?.role === Role.DIRECTOR) { alert("관장 계정은 삭제할 수 없습니다."); return; }
+    if (target?.role === Role.DIRECTOR) {  return; }
     setLocalUsers(prev => prev.filter(u => u.id !== userId));
     setDeleteConfirm(null);
   };
 
   // 저장
   const handleSave = () => {
-    dbService.saveUsers(localUsers);
     setSaved(true);
-    setTimeout(() => { onSaved(); onClose(); }, 700);
+    setTimeout(() => { onSaved(localUsers); onClose(); }, 700);
   };
 
   const inputCls = "w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 bg-white";

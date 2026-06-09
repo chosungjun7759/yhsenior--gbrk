@@ -51,18 +51,17 @@ export default function LeaveRequestForm({ currentUser, remainingLeave, onSubmit
   };
 
   const handleSubmit = () => {
-    if (!startDate) { alert("시작일을 선택해주세요."); return; }
+    if (!startDate) {  return; }
     if (
       leaveType !== LeaveType.HALF &&
       leaveType !== LeaveType.QUARTER &&
       leaveType !== LeaveType.REPLACEMENT &&
       !endDate
-    ) { alert("종료일을 선택해주세요."); return; }
+    ) {  return; }
 
     // 연가 시 인수인계서 필수
     if (leaveType === LeaveType.ANNUAL && (!handoverData || !handoverData.handoverTo)) {
-      alert("연가 신청 시 인수인계서의 인수자를 입력해주세요.");
-      setActiveTab("handover");
+            setActiveTab("handover");
       return;
     }
 
@@ -71,7 +70,7 @@ export default function LeaveRequestForm({ currentUser, remainingLeave, onSubmit
       (leaveType === LeaveType.ANNUAL || leaveType === LeaveType.HALF || leaveType === LeaveType.QUARTER) &&
       duration > remainingLeave
     ) {
-      alert(`잔여 연차(${remainingLeave}일)가 부족합니다.`);
+      alert(`잔여 연차가 부족합니다.`);
       return;
     }
 

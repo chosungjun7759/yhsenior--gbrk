@@ -1,80 +1,82 @@
-import { User, LeaveRequest, Role, LeaveType } from "./types";
-import { INITIAL_USERS, INITIAL_REQUESTS } from "./data";
+/**
+ * databaseService.ts
+ * Firebase Firestore 버전
+ * localStorage → Firestore 완전 교체
+ */
+import {
+  collection, doc, getDocs, getDoc,
+  setDoc, updateDoc, deleteDoc,
+  onSnapshot, query, orderBy,
+  writeBatch
+} from "firebase/firestore";
+import { db } from "./firebase";
+import { User, LeaveRequest, Role, LeaveType, ApprovalStatus } from "./types";
+import { INITIAL_USERS } from "./data";
 
-const STORAGE_KEYS = {
-  USERS: "yeonhee_users_v1",
-  REQUESTS: "yeonhee_requests_v1"
-};
+const USERS_COL = "users";
+const REQUESTS_COL = "requests";
 
 export const dbService = {
-  getUsers(): User[] {
-    const raw = localStorage.getItem(STORAGE_KEYS.USERS);
-    if (!raw) {
-      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(INITIAL_USERS));
+
+  // ── 사용자 ──────────────────────────────────────────────
+
+  async getUsers(): Promise<User[]> {
+    const snap = await getDocs(collection(db, USERS_COL));
+    if (snap.empty) {
+      // 초기 직원 데이터 자동 생성
+      await this.initUsers();
       return INITIAL_USERS;
     }
-    return JSON.parse(raw);
+    return snap.docs.map(d => d.data() as User);
   },
 
-  getRequests(): LeaveRequest[] {
-    const raw = localStorage.getItem(STORAGE_KEYS.REQUESTS);
-    if (!raw) {
-      localStorage.setItem(STORAGE_KEYS.REQUESTS, JSON.stringify(INITIAL_REQUESTS));
-      return INITIAL_REQUESTS;
-    }
-    return JSON.parse(raw);
+  async initUsers() {
+    const batch = writeBatch(db);
+    INITIAL_USERS.forEach(user => {
+      batch.set(doc(db, USERS_COL, user.id), user);
+    });
+    await batch.commit();
   },
 
-  saveUsers(users: User[]) {
-    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
+  async saveUsers(users: User[]) {
+    const batch = writeBatch(db);
+    users.forEach(user => {
+      batch.set(doc(db, USERS_COL, user.id), user);
+    });
+    await batch.commit();
   },
 
-  saveRequests(requests: LeaveRequest[]) {
-    localStorage.setItem(STORAGE_KEYS.REQUESTS, JSON.stringify(requests));
+  async saveUserStamp(userId: string, base64: string) {
+    await updateDoc(doc(db, USERS_COL, userId), { stampImage: base64 });
   },
 
-  // 도장 이미지 저장 (userId 기준)
-  saveUserStamp(userId: string, base64: string) {
-    const users = this.getUsers();
-    const idx = users.findIndex(u => u.id === userId);
-    if (idx === -1) return;
-    users[idx].stampImage = base64;
-    this.saveUsers(users);
+  async getUserStamp(userId: string): Promise<string | undefined> {
+    const snap = await getDoc(doc(db, USERS_COL, userId));
+    return snap.exists() ? (snap.data() as User).stampImage : undefined;
   },
 
-  // 도장 이미지 조회
-  getUserStamp(userId: string): string | undefined {
-    const users = this.getUsers();
-    return users.find(u => u.id === userId)?.stampImage;
-  },
+  // ── 휴가 신청 ────────────────────────────────────────────
 
-  getRemainingLeave(userId: string): number {
-    const users = this.getUsers();
-    const user = users.find(u => u.id === userId);
-    if (!user) return 0;
-    const approvedRequests = this.getRequests().filter(
-      req => req.userId === userId && req.status === "FINAL_APPROVED"
+  async getRequests(): Promise<LeaveRequest[]> {
+    const snap = await getDocs(
+      query(collection(db, REQUESTS_COL), orderBy("createdAt", "desc"))
     );
-    const deduction = approvedRequests.reduce((sum, req) => {
-      if (
-        req.leaveType === LeaveType.ANNUAL ||
-        req.leaveType === LeaveType.HALF ||
-        req.leaveType === LeaveType.QUARTER
-      ) {
-        return sum + req.duration;
-      }
-      return sum;
-    }, 0);
-    return Math.max(0, parseFloat((user.initialLeave - deduction).toFixed(3)));
+    return snap.docs.map(d => d.data() as LeaveRequest);
   },
 
-  addRequest(request: Omit<LeaveRequest, "id" | "createdAt" | "status">): LeaveRequest {
-    const requests = this.getRequests();
+  async saveRequests(requests: LeaveRequest[]) {
+    const batch = writeBatch(db);
+    requests.forEach(req => {
+      batch.set(doc(db, REQUESTS_COL, req.id), req);
+    });
+    await batch.commit();
+  },
+
+  async addRequest(request: Omit<LeaveRequest, "id" | "createdAt" | "status">): Promise<LeaveRequest> {
     const isManagerApplying = request.userId === "user_1";
     const initialStatus = isManagerApplying ? "MANAGER_APPROVED" : "PENDING";
-
-    // 신청인 도장 자동 첨부
-    const applicantStamp = this.getUserStamp(request.userId);
+    const stampSnap = await getDoc(doc(db, USERS_COL, request.userId));
+    const applicantStamp = (stampSnap.data() as User)?.stampImage;
 
     const newRequest: LeaveRequest = {
       ...request,
@@ -85,84 +87,130 @@ export const dbService = {
       ...(isManagerApplying ? {
         managerApprovalDate: new Date().toISOString().split("T")[0],
         managerSign: "김효영",
-        managerStamp: this.getUserStamp("user_1"),
+        managerStamp: applicantStamp,
       } : {})
     };
-    requests.unshift(newRequest);
-    this.saveRequests(requests);
+    await setDoc(doc(db, REQUESTS_COL, newRequest.id), newRequest);
     return newRequest;
   },
 
-  approveByManager(requestId: string, managerName: string): LeaveRequest | null {
-    const requests = this.getRequests();
-    const index = requests.findIndex(r => r.id === requestId);
-    if (index === -1) return null;
-    const req = requests[index];
-    req.status = "MANAGER_APPROVED";
-    req.managerApprovalDate = new Date().toISOString().split("T")[0];
-    req.managerSign = managerName;
-    // 과장 도장 첨부 (user_1 고정)
-    req.managerStamp = this.getUserStamp("user_1");
-    delete req.rejectedByRole;
-    delete req.rejectedByName;
-    delete req.rejectionReason;
-    requests[index] = req;
-    this.saveRequests(requests);
-    return req;
+  async approveByManager(requestId: string, managerName: string): Promise<LeaveRequest | null> {
+    const ref = doc(db, REQUESTS_COL, requestId);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return null;
+    const managerStampSnap = await getDoc(doc(db, USERS_COL, "user_1"));
+    const managerStamp = (managerStampSnap.data() as User)?.stampImage;
+    const updates = {
+      status: "MANAGER_APPROVED" as ApprovalStatus,
+      managerApprovalDate: new Date().toISOString().split("T")[0],
+      managerSign: managerName,
+      managerStamp: managerStamp ?? null,
+      rejectedByRole: null,
+      rejectedByName: null,
+      rejectionReason: null,
+    };
+    await updateDoc(ref, updates);
+    return { ...snap.data() as LeaveRequest, ...updates };
   },
 
-  rejectByManager(requestId: string, managerName: string, reason: string): LeaveRequest | null {
-    const requests = this.getRequests();
-    const index = requests.findIndex(r => r.id === requestId);
-    if (index === -1) return null;
-    const req = requests[index];
-    req.status = "REJECTED";
-    req.rejectedByRole = Role.MANAGER;
-    req.rejectedByName = managerName;
-    req.rejectionReason = reason;
-    requests[index] = req;
-    this.saveRequests(requests);
-    return req;
+  async rejectByManager(requestId: string, managerName: string, reason: string): Promise<LeaveRequest | null> {
+    const ref = doc(db, REQUESTS_COL, requestId);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return null;
+    const updates = {
+      status: "REJECTED" as ApprovalStatus,
+      rejectedByRole: Role.MANAGER,
+      rejectedByName: managerName,
+      rejectionReason: reason,
+    };
+    await updateDoc(ref, updates);
+    return { ...snap.data() as LeaveRequest, ...updates };
   },
 
-  approveByDirector(requestId: string, directorName: string): LeaveRequest | null {
-    const requests = this.getRequests();
-    const index = requests.findIndex(r => r.id === requestId);
-    if (index === -1) return null;
-    const req = requests[index];
-    req.status = "FINAL_APPROVED";
-    req.directorApprovalDate = new Date().toISOString().split("T")[0];
-    req.directorSign = directorName;
-    req.directorStamp = this.getUserStamp("user_5");
-    // 인수인계서도 함께 자동 승인
+  async approveByDirector(requestId: string, directorName: string): Promise<LeaveRequest | null> {
+    const ref = doc(db, REQUESTS_COL, requestId);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return null;
+    const directorStampSnap = await getDoc(doc(db, USERS_COL, "user_5"));
+    const directorStamp = (directorStampSnap.data() as User)?.stampImage;
+    const req = snap.data() as LeaveRequest;
+    const updates: Partial<LeaveRequest> = {
+      status: "FINAL_APPROVED",
+      directorApprovalDate: new Date().toISOString().split("T")[0],
+      directorSign: directorName,
+      directorStamp: directorStamp ?? undefined,
+      rejectedByRole: undefined,
+      rejectedByName: undefined,
+      rejectionReason: undefined,
+    };
     if (req.handoverItems && req.handoverItems.length > 0) {
-      req.handoverApprovedAt = new Date().toISOString().split("T")[0];
-      req.handoverApprovedBy = directorName;
+      updates.handoverApprovedAt = new Date().toISOString().split("T")[0];
+      updates.handoverApprovedBy = directorName;
     }
-    delete req.rejectedByRole;
-    delete req.rejectedByName;
-    delete req.rejectionReason;
-    requests[index] = req;
-    this.saveRequests(requests);
-    return req;
+    await updateDoc(ref, updates);
+    return { ...req, ...updates };
   },
 
-  rejectByDirector(requestId: string, directorName: string, reason: string): LeaveRequest | null {
-    const requests = this.getRequests();
-    const index = requests.findIndex(r => r.id === requestId);
-    if (index === -1) return null;
-    const req = requests[index];
-    req.status = "REJECTED";
-    req.rejectedByRole = Role.DIRECTOR;
-    req.rejectedByName = directorName;
-    req.rejectionReason = reason;
-    requests[index] = req;
-    this.saveRequests(requests);
-    return req;
+  async rejectByDirector(requestId: string, directorName: string, reason: string): Promise<LeaveRequest | null> {
+    const ref = doc(db, REQUESTS_COL, requestId);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return null;
+    const updates = {
+      status: "REJECTED" as ApprovalStatus,
+      rejectedByRole: Role.DIRECTOR,
+      rejectedByName: directorName,
+      rejectionReason: reason,
+    };
+    await updateDoc(ref, updates);
+    return { ...snap.data() as LeaveRequest, ...updates };
   },
 
-  resetDatabase() {
-    localStorage.removeItem(STORAGE_KEYS.USERS);
-    localStorage.removeItem(STORAGE_KEYS.REQUESTS);
-  }
+  async deleteRequest(requestId: string) {
+    await deleteDoc(doc(db, REQUESTS_COL, requestId));
+  },
+
+  async getRemainingLeave(userId: string): Promise<number> {
+    const userSnap = await getDoc(doc(db, USERS_COL, userId));
+    if (!userSnap.exists()) return 0;
+    const user = userSnap.data() as User;
+    const reqSnap = await getDocs(collection(db, REQUESTS_COL));
+    const approved = reqSnap.docs
+      .map(d => d.data() as LeaveRequest)
+      .filter(r =>
+        r.userId === userId &&
+        r.status === "FINAL_APPROVED" &&
+        (r.leaveType === LeaveType.ANNUAL ||
+         r.leaveType === LeaveType.HALF ||
+         r.leaveType === LeaveType.QUARTER)
+      );
+    const deduction = approved.reduce((sum, r) => sum + r.duration, 0);
+    return Math.max(0, parseFloat((user.initialLeave - deduction).toFixed(3)));
+  },
+
+  async resetDatabase() {
+    // 모든 요청 삭제
+    const reqSnap = await getDocs(collection(db, REQUESTS_COL));
+    const batch = writeBatch(db);
+    reqSnap.docs.forEach(d => batch.delete(d.ref));
+    await batch.commit();
+    // 사용자 초기화
+    await this.initUsers();
+  },
+
+  // ── 실시간 구독 ──────────────────────────────────────────
+
+  subscribeUsers(callback: (users: User[]) => void) {
+    return onSnapshot(collection(db, USERS_COL), snap => {
+      callback(snap.docs.map(d => d.data() as User));
+    });
+  },
+
+  subscribeRequests(callback: (requests: LeaveRequest[]) => void) {
+    return onSnapshot(
+      query(collection(db, REQUESTS_COL), orderBy("createdAt", "desc")),
+      snap => {
+        callback(snap.docs.map(d => d.data() as LeaveRequest));
+      }
+    );
+  },
 };

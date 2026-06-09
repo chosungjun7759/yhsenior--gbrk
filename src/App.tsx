@@ -12,7 +12,7 @@ import LeaveResetManager from "./components/LeaveResetManager";
 import LeaveEditModal from "./components/LeaveEditModal";
 import StaffManager from "./components/StaffManager";
 import {
-  Heart, Plus, CheckSquare, Users, Table,
+  Heart, Plus, CheckSquare, Users,
   RefreshCw, BadgeCheck, ArrowLeft
 } from "lucide-react";
 
@@ -30,14 +30,27 @@ export default function App() {
   const [editTarget, setEditTarget] = useState<LeaveRequest | null>(null);
   const [showStaffManager, setShowStaffManager] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);
+  const [myRemainingLeave, setMyRemainingLeave] = useState(0);
+  const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
 
+  // Firestore 실시간 구독
   useEffect(() => {
-    const loadedUsers = dbService.getUsers();
-    const loadedRequests = dbService.getRequests();
-    setUsers(loadedUsers);
-    setRequests(loadedRequests);
+    const unsubUsers = dbService.subscribeUsers(u => {
+      setUsers(u);
+      setLoading(false);
+    });
+    const unsubReqs = dbService.subscribeRequests(r => {
+      setRequests(r);
+    });
+    return () => { unsubUsers(); unsubReqs(); };
   }, []);
+
+  // 잔여연차 실시간 계산
+  useEffect(() => {
+    if (!currentUser) return;
+    dbService.getRemainingLeave(currentUser.id).then(setMyRemainingLeave);
+  }, [currentUser, requests]);
 
   useEffect(() => {
     if (toast) {
@@ -50,23 +63,17 @@ export default function App() {
     setToast({ message, type });
   };
 
-  const refreshData = () => {
-    setRequests(dbService.getRequests());
-    setUsers(dbService.getUsers());
-  };
-
-  if (users.length === 0) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-slate-100 flex items-center justify-center">
         <div className="text-center p-6 bg-white rounded-2xl border border-slate-200 shadow-sm">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto" />
-          <p className="text-xs text-slate-500 font-bold mt-4">로딩 중...</p>
+          <p className="text-xs text-slate-500 font-bold mt-4">연희노인복지관 시스템 로딩 중...</p>
         </div>
       </div>
     );
   }
 
-  // ── 로그인 화면 ──────────────────────────────────────────
   if (!currentUser) {
     return (
       <div className="min-h-screen bg-slate-100 flex flex-col items-center justify-center p-6">
@@ -132,10 +139,10 @@ export default function App() {
   }
 
   // ── 핸들러 ───────────────────────────────────────────────
-  const handleLeaveSubmit = (formData: Omit<LeaveRequest, "id" | "createdAt" | "status">) => {
+
+  const handleLeaveSubmit = async (formData: Omit<LeaveRequest, "id" | "createdAt" | "status">) => {
     try {
-      dbService.addRequest(formData);
-      refreshData();
+      await dbService.addRequest(formData);
       showToast(
         currentUser.role === Role.MANAGER
           ? "기안이 상신되어 관장 결재 단계로 이첩되었습니다."
@@ -145,63 +152,50 @@ export default function App() {
     } catch { showToast("신청에 실패했습니다.", "error"); }
   };
 
-  const handleApprove = (requestId: string) => {
+  const handleApprove = async (requestId: string) => {
     try {
       if (currentUser.role === Role.MANAGER) {
-        dbService.approveByManager(requestId, currentUser.name);
+        await dbService.approveByManager(requestId, currentUser.name);
         showToast("1차 승인 완료. 관장 최종 결재로 상신되었습니다.", "success");
       } else if (currentUser.role === Role.DIRECTOR) {
-        dbService.approveByDirector(requestId, currentUser.name);
+        await dbService.approveByDirector(requestId, currentUser.name);
         showToast("최종 승인 처리가 완료되었습니다.", "success");
       }
-      refreshData();
     } catch { showToast("승인 처리에 실패했습니다.", "error"); }
   };
 
-  const handleReject = (requestId: string, reason: string) => {
+  const handleReject = async (requestId: string, reason: string) => {
     try {
-      if (currentUser.role === Role.MANAGER) dbService.rejectByManager(requestId, currentUser.name, reason);
-      else if (currentUser.role === Role.DIRECTOR) dbService.rejectByDirector(requestId, currentUser.name, reason);
+      if (currentUser.role === Role.MANAGER) await dbService.rejectByManager(requestId, currentUser.name, reason);
+      else if (currentUser.role === Role.DIRECTOR) await dbService.rejectByDirector(requestId, currentUser.name, reason);
       showToast("반려 처리되었습니다.", "info");
-      refreshData();
     } catch { showToast("반려 처리에 실패했습니다.", "error"); }
   };
 
-  const handleDeleteRequest = (requestId: string) => {
-    const freshReqs = dbService.getRequests();
-    const target = freshReqs.find(r => r.id === requestId);
+  const handleDeleteRequest = async (requestId: string) => {
+    const target = requests.find(r => r.id === requestId);
     if (!target) return;
     if (target.status !== "PENDING") {
       showToast("이미 결재가 진행 중인 문서는 취소할 수 없습니다.", "error");
       return;
     }
-    const filtered = freshReqs.filter(r => r.id !== requestId);
-    dbService.saveRequests(filtered);
-    setRequests(filtered);
+    await dbService.deleteRequest(requestId);
     showToast("신청이 취소되었습니다.", "info");
   };
 
-  // 관장 전용 강제 삭제 (결재 완료 포함)
-  const handleDeleteByDirector = (requestId: string) => {
-    const filtered = dbService.getRequests().filter(r => r.id !== requestId);
-    dbService.saveRequests(filtered);
-    setRequests([...filtered]);
+  const handleDeleteByDirector = async (requestId: string) => {
+    await dbService.deleteRequest(requestId);
     setEditTarget(null);
     showToast("휴가 신청이 삭제되었습니다.", "info");
   };
 
-  function handleResetDatabase() {
-    if (window.confirm("데이터베이스를 초기화하시겠습니까?")) {
-      dbService.resetDatabase();
-      setUsers(dbService.getUsers());
-      setRequests(dbService.getRequests());
-      setCurrentUser(null);
-      setAdminTab("APPROVAL");
-      showToast("초기화되었습니다.", "success");
-    }
+  async function handleResetDatabase() {
+    await dbService.resetDatabase();
+    setCurrentUser(null);
+    setAdminTab("APPROVAL");
+    showToast("초기화되었습니다.", "success");
   }
 
-  const myRemainingLeave = dbService.getRemainingLeave(currentUser.id);
   const isAdmin = currentUser.role === Role.DIRECTOR || currentUser.role === Role.MANAGER;
   const pendingCount = (() => {
     if (currentUser.role === Role.MANAGER)
@@ -220,33 +214,27 @@ export default function App() {
         onStaffManage={() => setShowStaffManager(true)}
       />
 
-      {/* 인쇄 미리보기 */}
       {activePrintRequest && (
         <PrintForm request={activePrintRequest} onClose={() => setActivePrintRequest(null)} />
       )}
 
-      {/* 직원 관리 (관장 전용) */}
       {showStaffManager && currentUser?.role === Role.DIRECTOR && (
         <StaffManager
           users={users}
           onClose={() => setShowStaffManager(false)}
-          onSaved={() => {
-            refreshData();
+          onSaved={async (updatedUsers) => {
+            await dbService.saveUsers(updatedUsers);
             showToast("직원 정보가 업데이트되었습니다.", "success");
           }}
         />
       )}
 
-      {/* 휴가 수정 모달 (관장 전용) */}
       {editTarget && currentUser?.role === Role.DIRECTOR && (
         <LeaveEditModal
           request={editTarget}
           onClose={() => setEditTarget(null)}
-          onSave={(updated) => {
-            const reqs = dbService.getRequests();
-            const idx = reqs.findIndex(r => r.id === updated.id);
-            if (idx !== -1) { reqs[idx] = updated; dbService.saveRequests(reqs); }
-            refreshData();
+          onSave={async (updated) => {
+            await dbService.saveRequests([updated]);
             setEditTarget(null);
             showToast("휴가 내용이 수정되었습니다.", "success");
           }}
@@ -254,30 +242,26 @@ export default function App() {
         />
       )}
 
-      {/* 연차 초기화 (관장 전용) */}
       {showLeaveReset && currentUser.role === Role.DIRECTOR && (
         <LeaveResetManager
           users={users}
           onClose={() => setShowLeaveReset(false)}
-          onSaved={() => { refreshData(); showToast("연차가 업데이트되었습니다.", "success"); }}
-        />
-      )}
-
-      {/* 도장 업로더 */}
-      {showStampUploader && currentUser && (
-        <StampUploader
-          currentUser={currentUser}
-          onClose={() => setShowStampUploader(false)}
-          onSaved={() => {
-            refreshData();
-            showToast("도장이 저장되었습니다.", "success");
+          onSaved={async (updatedUsers) => {
+            await dbService.saveUsers(updatedUsers);
+            showToast("연차가 업데이트되었습니다.", "success");
           }}
         />
       )}
 
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 mt-8 print:hidden">
+      {showStampUploader && currentUser && (
+        <StampUploader
+          currentUser={currentUser}
+          onClose={() => setShowStampUploader(false)}
+          onSaved={() => showToast("도장이 저장되었습니다.", "success")}
+        />
+      )}
 
-        {/* 토스트 */}
+      <main className="max-w-4xl mx-auto px-4 sm:px-6 mt-8 print:hidden">
         {toast && (
           <div className="fixed bottom-6 right-6 z-[5000] px-5 py-3.5 rounded-xl shadow-2xl flex items-center gap-2.5 bg-slate-900 border border-slate-700 text-white text-xs font-bold">
             <BadgeCheck className="h-4 w-4 text-blue-400 shrink-0" />
@@ -285,12 +269,10 @@ export default function App() {
           </div>
         )}
 
-        {/* ── 관장 / 과장 화면 ── */}
         {isAdmin ? (
           <div className="space-y-6">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               {(() => {
-                // 과장: 휴가신청 + 결재대기만 / 관장: 전체
                 const menus = [
                   { key:"APPLY",    icon:<Plus        className={`h-7 w-7 ${adminTab==="APPLY"?"text-white":"text-blue-500"}`} />,    label:"휴가 신청", sub:"신청서 작성",   badge:undefined },
                   { key:"APPROVAL", icon:<CheckSquare className={`h-7 w-7 ${adminTab==="APPROVAL"?"text-white":"text-amber-500"}`} />, label:"결재 대기", sub:"승인 처리함", badge:pendingCount },
@@ -327,7 +309,7 @@ export default function App() {
                   <LeaveRequestForm
                     currentUser={currentUser}
                     remainingLeave={myRemainingLeave}
-                    onSubmit={fd => { handleLeaveSubmit(fd); setAdminTab("APPROVAL"); }}
+                    onSubmit={async fd => { await handleLeaveSubmit(fd); setAdminTab("APPROVAL"); }}
                   />
                 </div>
               )}
@@ -337,10 +319,8 @@ export default function App() {
                   <ApprovalBox currentUser={currentUser} requests={requests} onApprove={handleApprove} onReject={handleReject} />
                 </div>
               )}
-
             </div>
 
-            {/* 하단 바: 잔여연차 + 관장 전용 버튼들 */}
             <div className="bg-white border border-slate-200 rounded-2xl px-5 py-4 flex items-center justify-between shadow-sm">
               <span className="text-xs font-bold text-slate-500">내 잔여 연차</span>
               <div className="flex items-center gap-2">
@@ -366,10 +346,8 @@ export default function App() {
               </div>
             </div>
 
-            {/* 관장 전용 대시보드 (토글) */}
             {showDashboard && currentUser.role === Role.DIRECTOR && (
               <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-                {/* 탭 */}
                 <div className="flex border-b border-slate-200">
                   {(["STATUS","HISTORY"] as const).map(tab => (
                     <button
@@ -393,7 +371,7 @@ export default function App() {
                         <RequestHistory
                           currentUser={currentUser} requests={requests}
                           onPrintSelect={req => setActivePrintRequest(req)}
-                          onDeleteRequest={handleDeleteRequest}
+                          onDeleteRequest={currentUser.role === Role.DIRECTOR ? handleDeleteByDirector : handleDeleteRequest}
                           onEditRequest={req => setEditTarget(req)}
                         />
                       </div>
@@ -405,7 +383,6 @@ export default function App() {
           </div>
 
         ) : (
-          // ── 직원 화면 ──
           <div className="space-y-6">
             <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm flex flex-col items-center text-center space-y-2">
               <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">나의 잔여 연차</span>
@@ -439,7 +416,7 @@ export default function App() {
                 <LeaveRequestForm
                   currentUser={currentUser}
                   remainingLeave={myRemainingLeave}
-                  onSubmit={fd => { handleLeaveSubmit(fd); setIsApplyingFormOpen(false); }}
+                  onSubmit={async fd => { await handleLeaveSubmit(fd); setIsApplyingFormOpen(false); }}
                 />
               </div>
             )}
@@ -450,7 +427,7 @@ export default function App() {
                 <RequestHistory
                   currentUser={currentUser} requests={requests}
                   onPrintSelect={req => setActivePrintRequest(req)}
-                  onDeleteRequest={handleDeleteRequest}
+                  onDeleteRequest={currentUser.role === Role.DIRECTOR ? handleDeleteByDirector : handleDeleteRequest}
                   onEditRequest={req => setEditTarget(req)}
                   limit={3}
                 />
