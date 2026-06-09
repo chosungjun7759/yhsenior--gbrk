@@ -1,102 +1,135 @@
-/**
- * StampUploader.tsx
- */
-import React, { useState, useRef } from "react";
+import { useRef, useState, useEffect } from "react";
 import { User } from "../types";
-import { X, Upload, Trash2, Camera } from "lucide-react";
+import { dbService } from "../databaseService";
+import { Upload, CheckCircle, X, Stamp } from "lucide-react";
 
 interface StampUploaderProps {
   currentUser: User;
   onClose: () => void;
-  onSaved: (base64: string) => void;
+  onSaved: () => void;
 }
 
 export default function StampUploader({ currentUser, onClose, onSaved }: StampUploaderProps) {
-  const [stamp, setStamp] = useState<string | null>(currentUser.stampImage || null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [preview, setPreview] = useState<string | undefined>(undefined);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  useEffect(() => {
+    dbService.getUserStamp(currentUser.id).then(s => setPreview(s));
+  }, [currentUser.id]);
+  const [saved, setSaved] = useState(false);
 
+  const handleFile = (file: File) => {
+    if (!file.type.startsWith("image/")) {  return; }
     const reader = new FileReader();
-    reader.onload = (event) => {
-      if (event.target?.result) {
-        setStamp(event.target.result as string);
-      }
+    reader.onload = e => {
+      const base64 = e.target?.result as string;
+      setPreview(base64);
+      setSaved(false);
     };
     reader.readAsDataURL(file);
   };
 
-  const handleSave = () => {
-    onSaved(stamp || "");
-    onClose();
+  const handleSave = async () => {
+    if (!preview) return;
+    await dbService.saveUserStamp(currentUser.id, preview);
+    setSaved(true);
+    setTimeout(() => { onSaved(); onClose(); }, 800);
   };
 
-  const handleRemove = () => {
-    setStamp(null);
+  const handleDelete = async () => {
+    await dbService.saveUserStamp(currentUser.id, "");
+    setPreview(undefined);
+    setSaved(false);
   };
 
   return (
-    <div style={{ position:"fixed", inset:0, zIndex:9500, background:"rgba(10,15,30,.80)", display:"flex", alignItems:"center", justifyContent:"center", padding:"24px" }}>
-      <div style={{ background:"#fff", borderRadius:"20px", padding:"28px", width:"100%", maxWidth:"380px", boxShadow:"0 20px 60px rgba(0,0,0,.3)" }}>
-        <div className="flex items-center justify-between mb-5">
-          <span className="text-base font-black text-slate-900 tracking-tight">{currentUser.name} {currentUser.title} 도장 설정</span>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 cursor-pointer">
+    <div style={{
+      position:"fixed", inset:0, zIndex:8000,
+      background:"rgba(10,15,30,.75)",
+      display:"flex", alignItems:"center", justifyContent:"center", padding:"24px"
+    }}>
+      <div style={{
+        background:"#fff", borderRadius:"20px", padding:"32px",
+        width:"100%", maxWidth:"400px", boxShadow:"0 20px 60px rgba(0,0,0,.3)"
+      }}>
+        {/* 헤더 */}
+        <div style={{ display:"flex", alignItems:"center", justifycontent:"space-between", marginBottom:"20px" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:"10px" }}>
+            <Stamp size={20} color="#1d4ed8" />
+            <span style={{ fontSize:"15px", fontWeight:800, color:"#0f172a" }}>
+              {currentUser.name} 도장 등록
+            </span>
+          </div>
+          <button onClick={onClose} style={{ background:"none", border:"none", cursor:"pointer", color:"#94a3b8" }}>
             <X size={18} />
           </button>
         </div>
 
-        <div className="flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-2xl p-6 bg-slate-50 relative min-h-[160px]">
-          {stamp ? (
-            <div className="text-center space-y-4">
-              <div className="w-24 h-24 border border-red-200 rounded-full flex items-center justify-center bg-white p-2 mx-auto shadow-sm">
-                <img src={stamp} alt=" stamp preview" className="max-w-full max-h-full object-contain" />
-              </div>
-              <button
-                onClick={handleRemove}
-                className="text-xs font-bold text-red-500 hover:text-red-700 flex items-center gap-1 mx-auto cursor-pointer"
-              >
-                <Trash2 size={12} /> 이미지 삭제
-              </button>
-            </div>
+        {/* 업로드 영역 */}
+        <div
+          onClick={() => fileRef.current?.click()}
+          onDragOver={e => e.preventDefault()}
+          onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
+          style={{
+            border:"2px dashed #cbd5e1", borderRadius:"14px",
+            padding:"24px", textAlign:"center", cursor:"pointer",
+            background:"#f8fafc", marginBottom:"16px",
+            transition:"border-color .15s",
+          }}
+        >
+          {preview ? (
+            <img src={preview} alt="미리보기" style={{ maxWidth:"120px", maxHeight:"120px", objectFit:"contain", margin:"0 auto", display:"block" }} />
           ) : (
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="group text-center space-y-3 cursor-pointer"
-            >
-              <div className="p-4 bg-white rounded-full inline-block shadow-sm text-slate-400 group-hover:text-blue-600 transition-colors">
-                <Upload size={24} />
-              </div>
-              <div>
-                <span className="block text-xs font-black text-slate-800">결재용 도장(사인) 이미지 첨부</span>
-                <span className="block text-[10px] text-slate-400 font-bold mt-1">권장 사이즈: 150px * 150px (PNG 추천)</span>
-              </div>
-            </button>
+            <>
+              <Upload size={32} color="#94a3b8" style={{ margin:"0 auto 8px" }} />
+              <p style={{ fontSize:"13px", color:"#64748b", fontWeight:600 }}>클릭 또는 드래그로 도장 이미지 업로드</p>
+              <p style={{ fontSize:"11px", color:"#94a3b8", marginTop:"4px" }}>PNG, JPG 권장 (배경 투명 PNG 최적)</p>
+            </>
           )}
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileChange}
-            accept="image/*"
-            className="hidden"
-          />
         </div>
 
-        <div className="flex gap-3 mt-6">
-          <button
-            onClick={onClose}
-            className="flex-1 py-3 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 bg-slate-50 hover:bg-slate-100 cursor-pointer"
-          >
-            취소
-          </button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          style={{ display:"none" }}
+          onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
+        />
+
+        {/* 버튼 */}
+        <div style={{ display:"flex", gap:"10px" }}>
+          {preview && (
+            <button
+              onClick={handleDelete}
+              style={{
+                flex:1, padding:"10px", border:"1px solid #fecaca",
+                borderRadius:"12px", background:"#fff5f5", color:"#ef4444",
+                fontSize:"13px", fontWeight:700, cursor:"pointer"
+              }}
+            >
+              삭제
+            </button>
+          )}
           <button
             onClick={handleSave}
-            className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black shadow-sm transition-colors cursor-pointer"
+            disabled={!preview}
+            style={{
+              flex:2, padding:"10px", border:"none",
+              borderRadius:"12px",
+              background: saved ? "#10b981" : preview ? "#1d4ed8" : "#e2e8f0",
+              color: preview ? "#fff" : "#94a3b8",
+              fontSize:"13px", fontWeight:700,
+              cursor: preview ? "pointer" : "not-allowed",
+              display:"flex", alignItems:"center", justifyContent:"center", gap:"6px"
+            }}
           >
-            적용하기
+            {saved ? <><CheckCircle size={14} /> 저장됨!</> : "도장 저장"}
           </button>
         </div>
+
+        <p style={{ fontSize:"11px", color:"#94a3b8", marginTop:"12px", textAlign:"center", lineHeight:1.6 }}>
+          저장된 도장은 휴가 신청서 인쇄 시 자동으로 반영됩니다.
+        </p>
       </div>
     </div>
   );

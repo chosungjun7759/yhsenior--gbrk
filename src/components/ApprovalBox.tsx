@@ -1,130 +1,189 @@
-/**
- * ApprovalBox.tsx
- */
 import { useState } from "react";
-import { LeaveRequest, LEAVE_TYPE_LABELS, Role, LeaveType } from "../types";
-import { Check, X, AlertCircle } from "lucide-react";
+import { User, LeaveRequest, Role, LEAVE_TYPE_LABELS } from "../types";
+import { CheckCircle, XCircle, ChevronDown, ChevronUp, FileText } from "lucide-react";
+import HandoverPrint from "./HandoverPrint";
+
+// 인수인계서 인라인 뷰어
+function HandoverViewer({ request }: { request: LeaveRequest }) {
+  const [open, setOpen] = useState(false);
+  if (!request.handoverItems?.length) return null;
+  return (
+    <div className="border border-violet-200 rounded-xl overflow-hidden bg-violet-50/30">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-3 py-2.5 text-xs font-bold text-violet-700 cursor-pointer hover:bg-violet-50"
+      >
+        <span className="flex items-center gap-1.5">
+          <FileText size={13} /> 업무 인수인계서 확인
+          <span className="bg-violet-100 text-violet-600 px-1.5 py-0.5 rounded text-[10px]">{request.handoverItems.length}건</span>
+        </span>
+        {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+      </button>
+      {open && (
+        <div className="px-3 pb-3 space-y-2">
+          {/* 기본 정보 */}
+          <div className="grid grid-cols-2 gap-2 text-xs bg-white rounded-lg p-2.5 border border-violet-100">
+            <div><span className="text-slate-400">인계자</span> <span className="font-bold">{request.handoverFrom || request.userName}</span></div>
+            <div><span className="text-slate-400">인수자</span> <span className="font-bold">{request.handoverTo || "-"}</span></div>
+            <div><span className="text-slate-400">인계기간</span> <span className="font-bold">{request.handoverPeriod || "-"}</span></div>
+            <div><span className="text-slate-400">확인자</span> <span className="font-bold">{request.handoverConfirmer || "-"}</span></div>
+          </div>
+          {/* 업무 목록 */}
+          <div className="border border-violet-100 rounded-lg overflow-hidden text-xs">
+            <div className="grid grid-cols-[2fr_3fr_1.5fr] bg-violet-100 text-violet-700 font-bold">
+              <div className="px-2.5 py-1.5 border-r border-violet-200">업무명</div>
+              <div className="px-2.5 py-1.5 border-r border-violet-200">주요 내용</div>
+              <div className="px-2.5 py-1.5">비고</div>
+            </div>
+            {request.handoverItems.map((item, i) => (
+              <div key={item.id ?? i} className={`grid grid-cols-[2fr_3fr_1.5fr] border-t border-violet-100 ${i%2===0?"bg-white":"bg-violet-50/30"}`}>
+                <div className="px-2.5 py-2 border-r border-violet-100 font-semibold text-slate-700">{item.task || "-"}</div>
+                <div className="px-2.5 py-2 border-r border-violet-100 text-slate-600 whitespace-pre-wrap">{item.content || "-"}</div>
+                <div className="px-2.5 py-2 text-slate-500">{item.note || ""}</div>
+              </div>
+            ))}
+          </div>
+          {/* 인수인계서 출력 버튼 */}
+          <div className="flex justify-end pt-1">
+            <HandoverPrint request={request} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface ApprovalBoxProps {
-  currentUserRole: Role;
-  currentUserId: string;
+  currentUser: User;
   requests: LeaveRequest[];
   onApprove: (id: string) => void;
   onReject: (id: string, reason: string) => void;
 }
 
-export default function ApprovalBox({ currentUserRole, currentUserId, requests, onApprove, onReject }: ApprovalBoxProps) {
-  const [rejectId, setRejectId] = useState<string | null>(null);
+function formatDate(d: string) {
+  if (!d) return "";
+  const [y, m, dd] = d.split("-");
+  return `${y}.${m}.${dd}`;
+}
+
+export default function ApprovalBox({ currentUser, requests, onApprove, onReject }: ApprovalBoxProps) {
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [rejectMode, setRejectMode] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState("");
 
-  const handleRejectSubmit = (id: string) => {
-    if (!rejectReason.trim()) return;
+  // 내 결재 대상 필터
+  const pending = requests.filter(r => {
+    if (currentUser.role === Role.MANAGER) return r.status === "PENDING" && r.userId !== currentUser.id;
+    if (currentUser.role === Role.DIRECTOR) return r.status === "MANAGER_APPROVED";
+    return false;
+  });
+
+  if (pending.length === 0) {
+    return (
+      <div className="text-center py-16 text-slate-400">
+        <CheckCircle className="h-12 w-12 mx-auto mb-3 opacity-30" />
+        <p className="text-sm font-bold">대기 중인 결재 건이 없습니다.</p>
+      </div>
+    );
+  }
+
+  const handleReject = (id: string) => {
+    if (!rejectReason.trim()) {  return; }
     onReject(id, rejectReason);
-    setRejectId(null);
+    setRejectMode(null);
     setRejectReason("");
   };
 
-  // 나의 결재 대기 리스트 필터링
-  const getApprovalTargets = () => {
-    if (currentUserRole === Role.MANAGER) {
-      // 과장은 PENDING 문서 전체 결재권 부여 (과장 본인 기안물 제외 - 본인 기안물은 MANAGER_APPROVED로 즉시 상신)
-      return requests.filter(r => r.status === "PENDING" && r.userId !== currentUserId);
-    }
-    if (currentUserRole === Role.DIRECTOR) {
-      // 관장은 MANAGER_APPROVED (과장 결재 완료) 문서 전체를 결재 권한 (관장 본인 신청물 빼고)
-      return requests.filter(r => r.status === "MANAGER_APPROVED" && r.userId !== currentUserId);
-    }
-    return [];
-  };
-
-  const targets = getApprovalTargets();
-
-  if (currentUserRole === Role.STAFF) return null;
-
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 sm:p-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-base font-black text-slate-900 tracking-tight">결재 대기 분석함 ({currentUserRole === Role.MANAGER?"과장":"관장"})</h2>
-        <span className="text-[10px] bg-indigo-50 border border-indigo-100 text-indigo-700 font-bold px-2.5 py-1 rounded-full">
-          결재 대기 {targets.length}건
-        </span>
-      </div>
+    <div className="space-y-3">
+      {pending.map(req => (
+        <div key={req.id} className="border border-slate-200 rounded-xl overflow-hidden bg-white">
+          {/* 헤더 행 */}
+          <div
+            className="flex items-center justify-between px-4 py-3.5 cursor-pointer hover:bg-slate-50 transition-colors"
+            onClick={() => setExpanded(expanded === req.id ? null : req.id)}
+          >
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-black bg-amber-100 text-amber-700 border border-amber-200 px-2 py-0.5 rounded text-center">
+                {LEAVE_TYPE_LABELS[req.leaveType]}
+              </span>
+              <div>
+                <p className="text-sm font-bold text-slate-800">{req.userName} <span className="text-slate-400 font-normal">({req.userTitle})</span></p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {formatDate(req.startDate)} ~ {formatDate(req.endDate)}
+                  {req.duration > 0 && <span className="ml-1 text-red-400 font-semibold">({req.duration}일 차감)</span>}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-slate-400 hidden sm:block">{req.createdAt.slice(0,10)}</span>
+              {expanded === req.id ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
+            </div>
+          </div>
 
-      {targets.length === 0 ? (
-        <div className="py-12 text-center text-slate-400 text-xs flex flex-col items-center gap-2">
-          <AlertCircle className="h-5 w-5 opacity-40 text-slate-400" />
-          결재 대기 중인 문서가 없습니다.
-        </div>
-      ) : (
-        <div className="divide-y divide-slate-100 pr-1">
-          {targets.map((req) => (
-            <div key={req.id} className="py-4 first:pt-0 last:pb-0">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-bold text-slate-700">{req.userName} ({req.userTitle})</span>
-                    <span className="bg-slate-100 text-slate-500 text-[10px] font-bold px-2 py-0.5 rounded">
-                      {LEAVE_TYPE_LABELS[req.leaveType]}
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-500 font-medium font-mono">
-                    {req.startDate}
-                    {req.leaveType !== LeaveType.HALF && req.leaveType !== LeaveType.QUARTER && ` ~ ${req.endDate}`}
-                    <span className="ml-1 text-slate-400 font-bold">({req.duration}일)</span>
-                  </p>
-                  <p className="text-xs text-slate-600 bg-slate-50 border border-slate-100 rounded-lg p-2 mt-2 leading-relaxed whitespace-pre-wrap font-medium">
-                    {req.reason}
-                  </p>
-                </div>
-
-                {/* 결재 버튼 */}
-                <div className="flex items-center gap-2 self-end sm:self-center">
-                  <button
-                    onClick={() => onApprove(req.id)}
-                    className="flex items-center gap-1 bg-emerald-600 text-white hover:bg-emerald-700 px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm transition-colors cursor-pointer"
-                  >
-                    <Check size={13} /> 승인
-                  </button>
-                  <button
-                    onClick={() => setRejectId(req.id)}
-                    className="flex items-center gap-1 bg-red-600 text-white hover:bg-red-700 px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm transition-colors cursor-pointer"
-                  >
-                    <X size={13} /> 반려
-                  </button>
-                </div>
+          {/* 상세 펼침 */}
+          {expanded === req.id && (
+            <div className="border-t border-slate-100 px-4 py-4 bg-slate-50 space-y-3">
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div><span className="text-slate-400">신청인</span><br /><span className="font-bold text-slate-700">{req.userName} ({req.userTitle})</span></div>
+                <div><span className="text-slate-400">휴가 종류</span><br /><span className="font-bold text-slate-700">{LEAVE_TYPE_LABELS[req.leaveType]}</span></div>
+                <div><span className="text-slate-400">신청 기간</span><br /><span className="font-bold text-slate-700">{formatDate(req.startDate)} ~ {formatDate(req.endDate)}</span></div>
+                <div><span className="text-slate-400">차감 연차</span><br /><span className="font-bold text-red-500">{req.duration}일</span></div>
+                <div className="col-span-2"><span className="text-slate-400">신청 사유</span><br /><span className="font-bold text-slate-700">{req.reason}</span></div>
               </div>
 
-              {/* 반려 사유 입력 폼 */}
-              {rejectId === req.id && (
-                <div className="mt-3.5 bg-red-50 border border-red-100 rounded-xl p-3.5 space-y-2">
-                  <label className="block text-[11px] font-black text-red-600">반려 사유 입력</label>
+              {/* 연가일 경우 인수인계서 인라인 뷰어 노출 */}
+              {req.leaveType === "ANNUAL" && req.handoverItems && req.handoverItems.length > 0 && (
+                <HandoverViewer request={req} />
+              )}
+
+              {/* 반려 사유 입력 모드 */}
+              {rejectMode === req.id ? (
+                <div className="space-y-2">
+                  <textarea
+                    value={rejectReason}
+                    onChange={e => setRejectReason(e.target.value)}
+                    placeholder="반려 사유를 입력해주세요."
+                    rows={2}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-red-400 bg-white resize-none"
+                  />
                   <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={rejectReason}
-                      onChange={e => setRejectReason(e.target.value)}
-                      placeholder="예) 업무 일정이 중복됩니다. 사유 구체화 바람."
-                      className="flex-1 border border-red-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none bg-white focus:border-red-300 font-medium"
-                    />
                     <button
-                      onClick={() => handleRejectSubmit(req.id)}
-                      className="bg-red-600 hover:bg-red-700 text-white font-bold px-3.5 rounded-lg text-xs cursor-pointer"
+                      onClick={() => handleReject(req.id)}
+                      className="flex-1 bg-red-500 hover:bg-red-600 text-white text-xs font-bold py-2 rounded-lg transition-colors cursor-pointer"
                     >
-                      전송
+                      반려 확정
                     </button>
                     <button
-                      onClick={() => setRejectId(null)}
-                      className="bg-slate-200 text-slate-600 font-bold px-3 rounded-lg text-xs cursor-pointer"
+                      onClick={() => { setRejectMode(null); setRejectReason(""); }}
+                      className="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold py-2 rounded-lg transition-colors cursor-pointer"
                     >
                       취소
                     </button>
                   </div>
                 </div>
+              ) : (
+                <div className="flex gap-2 pt-1">
+                  <button
+                    onClick={() => onApprove(req.id)}
+                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-2.5 rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <CheckCircle className="h-3.5 w-3.5" />
+                    {currentUser.role === Role.MANAGER ? "1차 승인" : "최종 승인"}
+                  </button>
+                  <button
+                    onClick={() => setRejectMode(req.id)}
+                    className="flex-1 bg-white hover:bg-red-50 text-red-500 border border-red-200 text-xs font-bold py-2.5 rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <XCircle className="h-3.5 w-3.5" />
+                    반려
+                  </button>
+                </div>
               )}
             </div>
-          ))}
+          )}
         </div>
-      )}
+      ))}
     </div>
   );
 }

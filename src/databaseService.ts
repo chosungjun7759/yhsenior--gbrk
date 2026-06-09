@@ -100,14 +100,14 @@ export const dbService = {
     if (!snap.exists()) return null;
     const managerStampSnap = await getDoc(doc(db, USERS_COL, "user_1"));
     const managerStamp = (managerStampSnap.data() as User)?.stampImage;
-    const updates = {
-      status: "MANAGER_APPROVED" as const,
+    const updates: Partial<LeaveRequest> = {
+      status: "MANAGER_APPROVED",
       managerApprovalDate: new Date().toISOString().split("T")[0],
       managerSign: managerName,
-      managerStamp: managerStamp ?? null,
-      rejectedByRole: null,
-      rejectedByName: null,
-      rejectionReason: null,
+      managerStamp: managerStamp ?? undefined,
+      rejectedByRole: undefined,
+      rejectedByName: undefined,
+      rejectionReason: undefined,
     };
     await updateDoc(ref, updates);
     return { ...snap.data() as LeaveRequest, ...updates };
@@ -117,8 +117,8 @@ export const dbService = {
     const ref = doc(db, REQUESTS_COL, requestId);
     const snap = await getDoc(ref);
     if (!snap.exists()) return null;
-    const updates = {
-      status: "REJECTED" as const,
+    const updates: Partial<LeaveRequest> = {
+      status: "REJECTED",
       rejectedByRole: Role.MANAGER,
       rejectedByName: managerName,
       rejectionReason: reason,
@@ -135,7 +135,7 @@ export const dbService = {
     const directorStamp = (directorStampSnap.data() as User)?.stampImage;
     const req = snap.data() as LeaveRequest;
     const updates: Partial<LeaveRequest> = {
-      status: "FINAL_APPROVED" as const,
+      status: "FINAL_APPROVED",
       directorApprovalDate: new Date().toISOString().split("T")[0],
       directorSign: directorName,
       directorStamp: directorStamp ?? undefined,
@@ -155,8 +155,8 @@ export const dbService = {
     const ref = doc(db, REQUESTS_COL, requestId);
     const snap = await getDoc(ref);
     if (!snap.exists()) return null;
-    const updates = {
-      status: "REJECTED" as const,
+    const updates: Partial<LeaveRequest> = {
+      status: "REJECTED",
       rejectedByRole: Role.DIRECTOR,
       rejectedByName: directorName,
       rejectionReason: reason,

@@ -13,13 +13,6 @@ interface ExportLeaveExcelProps {
   year: number;
 }
 
-// 날짜 → "M월 D일" 형식
-function toKorDate(dateStr: string): string {
-  if (!dateStr) return "";
-  const [, m, d] = dateStr.split("-");
-  return `${parseInt(m)}월 ${parseInt(d)}일`;
-}
-
 // 날짜 범위 → "M월 D일~E일" 형식
 function toKorDateRange(start: string, end: string): string {
   if (!start) return "";

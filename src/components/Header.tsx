@@ -19,7 +19,7 @@ export default function Header({ currentUser, onLogout, onStampOpen, onStaffMana
 
   return (
     <header className="bg-white border-b border-slate-200 shadow-sm sticky top-0 z-50 print:hidden">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
         {/* 로고 */}
         <div className="flex items-center gap-2.5">
           <div className="bg-blue-600 text-white rounded-lg p-1.5">
@@ -33,7 +33,7 @@ export default function Header({ currentUser, onLogout, onStampOpen, onStaffMana
 
         {/* 우측 */}
         <div className="flex items-center gap-2">
-          <div className="text-right hidden sm:block">
+          <div className="text-right hidden md:block">
             <p className="text-xs font-bold text-slate-800">{currentUser.name} ({currentUser.title})</p>
           </div>
           <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${roleBadge.cls}`}>
@@ -44,36 +44,38 @@ export default function Header({ currentUser, onLogout, onStampOpen, onStaffMana
             <button
               onClick={onStaffManage}
               title="직원 관리"
-              className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-indigo-600 border border-slate-100 hover:border-indigo-300 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
+              className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-indigo-600 border border-slate-200 hover:border-indigo-300 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
             >
               <Users className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">직원 관리</span>
+              <span className="hidden lg:inline">직원 관리</span>
             </button>
           )}
           {/* 비밀번호 변경 버튼 */}
-          <button
-            onClick={onChangePassword}
-            title="비밀번호 변경"
-            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-purple-600 border border-slate-100 hover:border-purple-300 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
-          >
-            <Lock className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">비밀번호</span>
-          </button>
+          {currentUser.role === Role.DIRECTOR && (
+            <button
+              onClick={onChangePassword}
+              title="비밀번호 변경"
+              className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-purple-600 border border-slate-200 hover:border-purple-300 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
+            >
+              <Lock className="h-3.5 w-3.5" />
+              <span className="hidden lg:inline">비밀번호</span>
+            </button>
+          )}
           {/* 도장 등록 버튼 */}
           <button
             onClick={onStampOpen}
             title="내 도장 등록"
-            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-blue-600 border border-slate-100 hover:border-blue-300 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-blue-600 border border-slate-200 hover:border-blue-300 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
           >
             <Stamp className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">도장 등록</span>
+            <span className="hidden lg:inline">도장 등록</span>
           </button>
           <button
             onClick={onLogout}
-            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-red-600 border border-slate-100 hover:border-red-200 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-red-600 border border-slate-200 hover:border-red-200 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
           >
             <LogOut className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">로그아웃</span>
+            <span className="hidden lg:inline">로그아웃</span>
           </button>
         </div>
       </div>

@@ -61,7 +61,7 @@ export default function LeaveRequestForm({ currentUser, remainingLeave, onSubmit
 
     // 연가 시 인수인계서 필수
     if (leaveType === LeaveType.ANNUAL && (!handoverData || !handoverData.handoverTo)) {
-      setActiveTab("handover");
+            setActiveTab("handover");
       return;
     }
 
