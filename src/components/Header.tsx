@@ -51,16 +51,14 @@ export default function Header({ currentUser, onLogout, onStampOpen, onStaffMana
             </button>
           )}
           {/* 비밀번호 변경 버튼 */}
-          {currentUser.role === Role.DIRECTOR && (
-            <button
-              onClick={onChangePassword}
-              title="비밀번호 변경"
-              className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-purple-600 border border-slate-200 hover:border-purple-300 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
-            >
-              <Lock className="h-3.5 w-3.5" />
-              <span className="hidden lg:inline">비밀번호</span>
-            </button>
-          )}
+          <button
+            onClick={onChangePassword}
+            title="비밀번호 변경"
+            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-purple-600 border border-slate-200 hover:border-purple-300 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
+          >
+            <Lock className="h-3.5 w-3.5" />
+            <span className="hidden lg:inline">비밀번호</span>
+          </button>
           {/* 도장 등록 버튼 */}
           <button
             onClick={onStampOpen}

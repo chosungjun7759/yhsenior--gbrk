@@ -16,7 +16,7 @@ import LeaveEditModal from "./components/LeaveEditModal";
 import StaffManager from "./components/StaffManager";
 import ChangePasswordModal from "./components/ChangePasswordModal";
 import {
-  Plus, CheckSquare, Users,
+  Heart, Plus, CheckSquare, Users,
   RefreshCw, BadgeCheck, ArrowLeft
 } from "lucide-react";
 
